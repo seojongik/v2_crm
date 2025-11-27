@@ -1,0 +1,7 @@
+[submodule "myxplanner_app"]
+	path = myxplanner_app
+	url = https://github.com/seojongik/myxplanner_app.git
+
+[submodule "crm_landing_page"]
+	path = crm_landing_page
+	url = https://github.com/seojongik/crm_landing_page.git

@@ -1,0 +1,22 @@
+// FontAwesome 아이콘 라이브러리 추가 (CDN)
+if (!document.getElementById('fontawesome-css')) {
+    const link = document.createElement('link');
+    link.id = 'fontawesome-css';
+    link.rel = 'stylesheet';
+    link.href = 'https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css';
+    document.head.appendChild(link);
+}
+
+// Google Noto Sans KR 폰트 추가
+if (!document.getElementById('noto-sans-kr')) {
+    const link = document.createElement('link');
+    link.id = 'noto-sans-kr';
+    link.rel = 'stylesheet';
+    link.href = 'https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700&display=swap';
+    document.head.appendChild(link);
+}
+
+
+표에 제목과 내용들은 숫자들은 오른쪽 정렬, 나머지는 모두 가운데 정렬이 기본
+버튼 안의 텍스트는 상하좌우 모두 가운데 정렬
+버튼안의 텍스트는 볼드처리

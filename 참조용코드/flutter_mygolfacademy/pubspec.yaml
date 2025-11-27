@@ -1,0 +1,45 @@
+name: famd_clientapp
+description: FAMD 클라이언트 모바일 앱
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: '>=3.0.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  cupertino_icons: ^1.0.2
+  
+  # 상태 관리
+  provider: ^6.0.5
+  
+  # 네트워크 및 데이터
+  http: ^1.1.0
+  shared_preferences: ^2.2.0
+  
+  # UI 요소
+  flutter_svg: ^2.0.7
+  cached_network_image: ^3.3.0
+  google_fonts: ^5.1.0
+  table_calendar: ^3.0.9
+  
+  # 유틸리티
+  intl: ^0.20.2
+
+  # MySQL 직접 연결을 위한
+  mysql1: ^0.20.0
+  
+  # 로컬 데이터베이스
+  sqflite: ^2.3.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^2.0.1
+
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/images/
+  
