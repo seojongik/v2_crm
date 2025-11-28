@@ -6,6 +6,7 @@ import 'package:http/http.dart' as http;
 import '../../../services/api_service.dart';
 import '../../../services/upper_button_input_design.dart';
 import 'package:intl/intl.dart';
+import '/services/supabase_adapter.dart';
 
 class Tab10DiscountCouponSettingWidget extends StatefulWidget {
   const Tab10DiscountCouponSettingWidget({super.key});
@@ -35,48 +36,33 @@ class _Tab10DiscountCouponSettingWidgetState extends State<Tab10DiscountCouponSe
         throw Exception('브랜치 정보가 없습니다');
       }
       
-      final response = await http.post(
-        Uri.parse('https://autofms.mycafe24.com/dynamic_api.php'),
-        headers: {
-          'Content-Type': 'application/json',
-          'Accept': 'application/json',
-        },
-        body: json.encode({
-          'operation': 'get',
-          'table': 'v2_discount_coupon_setting',
-          'fields': ['coupon_code'],
-          'where': [
-            {'field': 'branch_id', 'operator': '=', 'value': currentBranchId},
-          ],
-        }),
-      ).timeout(Duration(seconds: 15));
+      final data = await SupabaseAdapter.getData(
+        table: 'v2_discount_coupon_setting',
+        fields: ['coupon_code'],
+        where: [
+          {'field': 'branch_id', 'operator': '=', 'value': currentBranchId},
+        ],
+      );
 
-      if (response.statusCode == 200) {
-        final result = json.decode(response.body);
-        if (result['success'] == true) {
-          final data = result['data'] as List;
-          
-          // 현재 브랜치의 쿠폰 코드 패턴 찾기
-          final branchPrefix = '${currentBranchId}_';
-          int maxNum = 0;
-          
-          for (var coupon in data) {
-            final couponCode = coupon['coupon_code'].toString();
-            
-            if (couponCode.startsWith(branchPrefix)) {
-              final numPart = couponCode.substring(branchPrefix.length);
-              final num = int.tryParse(numPart) ?? 0;
-              if (num > maxNum) maxNum = num;
-            }
-          }
-          
-          // 다음 번호 생성 (3자리 패딩)
-          final nextNum = maxNum + 1;
-          final nextCode = '${branchPrefix}${nextNum.toString().padLeft(3, '0')}';
-          
-          return nextCode;
+      // 현재 브랜치의 쿠폰 코드 패턴 찾기
+      final branchPrefix = '${currentBranchId}_';
+      int maxNum = 0;
+
+      for (var coupon in data) {
+        final couponCode = coupon['coupon_code'].toString();
+
+        if (couponCode.startsWith(branchPrefix)) {
+          final numPart = couponCode.substring(branchPrefix.length);
+          final num = int.tryParse(numPart) ?? 0;
+          if (num > maxNum) maxNum = num;
         }
       }
+
+      // 다음 번호 생성 (3자리 패딩)
+      final nextNum = maxNum + 1;
+      final nextCode = '${branchPrefix}${nextNum.toString().padLeft(3, '0')}';
+
+      return nextCode;
       
       // 첫 번째 쿠폰인 경우
       return '${currentBranchId}_001';
@@ -110,46 +96,21 @@ class _Tab10DiscountCouponSettingWidgetState extends State<Tab10DiscountCouponSe
         whereConditions.add({'field': 'setting_status', 'operator': '=', 'value': '유효'});
       }
       
-      final requestBody = {
-        'operation': 'get',
-        'table': 'v2_discount_coupon_setting',
-        'where': whereConditions,
-        'orderBy': [
+      final data = await SupabaseAdapter.getData(
+        table: 'v2_discount_coupon_setting',
+        where: whereConditions,
+        orderBy: [
           {'field': 'setting_status', 'direction': 'DESC'}, // 유효한 것부터
           {'field': 'coupon_code', 'direction': 'ASC'}
         ],
-      };
-      
-      print('📤 API 요청 데이터: ${json.encode(requestBody)}');
-      
-      final response = await http.post(
-        Uri.parse('https://autofms.mycafe24.com/dynamic_api.php'),
-        headers: {
-          'Content-Type': 'application/json',
-          'Accept': 'application/json',
-        },
-        body: json.encode(requestBody),
-      ).timeout(Duration(seconds: 15));
+      );
 
-      print('📥 API 응답 상태: ${response.statusCode}');
-      print('📥 API 응답 내용: ${response.body}');
-      
-      if (response.statusCode == 200) {
-        final result = json.decode(response.body);
-        if (result['success'] == true) {
-          final data = result['data'] as List;
-          setState(() {
-            _coupons = data.cast<Map<String, dynamic>>();
-          });
-          print('✅ 쿠폰 ${_coupons.length}개 로드 완료');
-          if (_coupons.isNotEmpty) {
-            print('🔧 첫 번째 쿠폰 데이터 키 확인: ${_coupons[0].keys.toList()}');
-          }
-        } else {
-          throw Exception('쿠폰 조회 실패: ${result['error'] ?? '알 수 없는 오류'}');
-        }
-      } else {
-        throw Exception('쿠폰 조회 HTTP 오류: ${response.statusCode}\n응답: ${response.body}');
+      setState(() {
+        _coupons = data.cast<Map<String, dynamic>>();
+      });
+      print('✅ 쿠폰 ${_coupons.length}개 로드 완료');
+      if (_coupons.isNotEmpty) {
+        print('🔧 첫 번째 쿠폰 데이터 키 확인: ${_coupons[0].keys.toList()}');
       }
     } catch (e) {
       print('❌ 쿠폰 로드 오류: $e');
@@ -164,33 +125,19 @@ class _Tab10DiscountCouponSettingWidgetState extends State<Tab10DiscountCouponSe
   // 자동발행 트리거 로드
   Future<void> _loadAutoTriggers() async {
     try {
-      final response = await http.post(
-        Uri.parse('https://autofms.mycafe24.com/dynamic_api.php'),
-        headers: {
-          'Content-Type': 'application/json',
-          'Accept': 'application/json',
-        },
-        body: json.encode({
-          'operation': 'get',
-          'table': 'v2_discount_coupon_auto_triggers',
-          'where': [
-            {'field': 'setting_status', 'operator': '=', 'value': '유효'},
-          ],
-          'orderBy': [
-            {'field': 'trigger_id', 'direction': 'ASC'}
-          ],
-        }),
-      ).timeout(Duration(seconds: 15));
+      final data = await SupabaseAdapter.getData(
+        table: 'v2_discount_coupon_auto_triggers',
+        where: [
+          {'field': 'setting_status', 'operator': '=', 'value': '유효'},
+        ],
+        orderBy: [
+          {'field': 'trigger_id', 'direction': 'ASC'}
+        ],
+      );
 
-      if (response.statusCode == 200) {
-        final result = json.decode(response.body);
-        if (result['success'] == true) {
-          final data = result['data'] as List;
-          setState(() {
-            _availableTriggers = data.cast<Map<String, dynamic>>();
-          });
-        }
-      }
+      setState(() {
+        _availableTriggers = data.cast<Map<String, dynamic>>();
+      });
     } catch (e) {
       print('❌ 자동발행 트리거 로드 오류: $e');
     }
@@ -239,31 +186,14 @@ class _Tab10DiscountCouponSettingWidgetState extends State<Tab10DiscountCouponSe
       couponData['setting_status'] = '유효';
       
       print('🔧 API 저장 데이터: $couponData');
-      
-      final response = await http.post(
-        Uri.parse('https://autofms.mycafe24.com/dynamic_api.php'),
-        headers: {
-          'Content-Type': 'application/json',
-          'Accept': 'application/json',
-        },
-        body: json.encode({
-          'operation': 'add',
-          'table': 'v2_discount_coupon_setting',
-          'data': couponData,
-        }),
-      ).timeout(Duration(seconds: 15));
 
-      if (response.statusCode == 200) {
-        final result = json.decode(response.body);
-        if (result['success'] == true) {
-          _showSuccessSnackBar('쿠폰이 추가되었습니다.');
-          _loadCoupons();
-        } else {
-          throw Exception('쿠폰 추가 실패: ${result['error'] ?? '알 수 없는 오류'}');
-        }
-      } else {
-        throw Exception('쿠폰 추가 HTTP 오류: ${response.statusCode}');
-      }
+      await SupabaseAdapter.addData(
+        table: 'v2_discount_coupon_setting',
+        data: couponData,
+      );
+
+      _showSuccessSnackBar('쿠폰이 추가되었습니다.');
+      _loadCoupons();
     } catch (e) {
       print('❌ 쿠폰 추가 오류: $e');
       _showErrorSnackBar('쿠폰 추가에 실패했습니다: $e');
@@ -284,35 +214,18 @@ class _Tab10DiscountCouponSettingWidgetState extends State<Tab10DiscountCouponSe
       updateData['updated_at'] = DateTime.now().toIso8601String();
       
       print('🔧 API 수정 데이터: $updateData');
-      
-      final response = await http.post(
-        Uri.parse('https://autofms.mycafe24.com/dynamic_api.php'),
-        headers: {
-          'Content-Type': 'application/json',
-          'Accept': 'application/json',
-        },
-        body: json.encode({
-          'operation': 'update',
-          'table': 'v2_discount_coupon_setting',
-          'data': updateData,
-          'where': [
-            {'field': 'coupon_code', 'operator': '=', 'value': couponIdOrCode},
-            {'field': 'branch_id', 'operator': '=', 'value': ApiService.getCurrentBranchId()},
-          ],
-        }),
-      ).timeout(Duration(seconds: 15));
 
-      if (response.statusCode == 200) {
-        final result = json.decode(response.body);
-        if (result['success'] == true) {
-          _showSuccessSnackBar('쿠폰이 수정되었습니다.');
-          _loadCoupons();
-        } else {
-          throw Exception('쿠폰 수정 실패: ${result['error'] ?? '알 수 없는 오류'}');
-        }
-      } else {
-        throw Exception('쿠폰 수정 HTTP 오류: ${response.statusCode}');
-      }
+      await SupabaseAdapter.updateData(
+        table: 'v2_discount_coupon_setting',
+        data: updateData,
+        where: [
+          {'field': 'coupon_code', 'operator': '=', 'value': couponIdOrCode},
+          {'field': 'branch_id', 'operator': '=', 'value': ApiService.getCurrentBranchId()},
+        ],
+      );
+
+      _showSuccessSnackBar('쿠폰이 수정되었습니다.');
+      _loadCoupons();
     } catch (e) {
       print('❌ 쿠폰 수정 오류: $e');
       _showErrorSnackBar('쿠폰 수정에 실패했습니다: $e');
@@ -330,37 +243,20 @@ class _Tab10DiscountCouponSettingWidgetState extends State<Tab10DiscountCouponSe
     });
     
     try {
-      final response = await http.post(
-        Uri.parse('https://autofms.mycafe24.com/dynamic_api.php'),
-        headers: {
-          'Content-Type': 'application/json',
-          'Accept': 'application/json',
+      await SupabaseAdapter.updateData(
+        table: 'v2_discount_coupon_setting',
+        data: {
+          'setting_status': '무효',
+          'updated_at': DateTime.now().toIso8601String(),
         },
-        body: json.encode({
-          'operation': 'update',
-          'table': 'v2_discount_coupon_setting',
-          'data': {
-            'setting_status': '무효',
-            'updated_at': DateTime.now().toIso8601String(),
-          },
-          'where': [
-            {'field': 'coupon_code', 'operator': '=', 'value': coupon['coupon_code']},
-            {'field': 'branch_id', 'operator': '=', 'value': ApiService.getCurrentBranchId()},
-          ],
-        }),
-      ).timeout(Duration(seconds: 15));
+        where: [
+          {'field': 'coupon_code', 'operator': '=', 'value': coupon['coupon_code']},
+          {'field': 'branch_id', 'operator': '=', 'value': ApiService.getCurrentBranchId()},
+        ],
+      );
 
-      if (response.statusCode == 200) {
-        final result = json.decode(response.body);
-        if (result['success'] == true) {
-          _showSuccessSnackBar('쿠폰이 비활성화되었습니다.');
-          _loadCoupons();
-        } else {
-          throw Exception('쿠폰 비활성화 실패: ${result['error'] ?? '알 수 없는 오류'}');
-        }
-      } else {
-        throw Exception('쿠폰 비활성화 HTTP 오류: ${response.statusCode}');
-      }
+      _showSuccessSnackBar('쿠폰이 비활성화되었습니다.');
+      _loadCoupons();
     } catch (e) {
       print('❌ 쿠폰 비활성화 오류: $e');
       _showErrorSnackBar('쿠폰 비활성화에 실패했습니다: $e');
@@ -849,35 +745,21 @@ class _CouponDialogState extends State<CouponDialog> {
     });
     
     try {
-      final response = await http.post(
-        Uri.parse('https://autofms.mycafe24.com/dynamic_api.php'),
-        headers: {
-          'Content-Type': 'application/json',
-          'Accept': 'application/json',
-        },
-        body: json.encode({
-          'operation': 'get',
-          'table': 'v2_discount_coupon_auto_triggers',
-          'where': [
-            {'field': 'setting_status', 'operator': '=', 'value': '유효'},
-          ],
-          'orderBy': [
-            {'field': 'trigger_id', 'direction': 'ASC'}
-          ],
-        }),
-      ).timeout(Duration(seconds: 15));
+      final data = await SupabaseAdapter.getData(
+        table: 'v2_discount_coupon_auto_triggers',
+        where: [
+          {'field': 'setting_status', 'operator': '=', 'value': '유효'},
+        ],
+        orderBy: [
+          {'field': 'trigger_id', 'direction': 'ASC'}
+        ],
+      );
 
-      if (response.statusCode == 200) {
-        final result = json.decode(response.body);
-        if (result['success'] == true) {
-          final data = result['data'] as List;
-          setState(() {
-            _availableTriggers = data.cast<Map<String, dynamic>>();
-          });
-          print('🔧 CouponDialog - 트리거 로드 완료: ${_availableTriggers.length}개');
-          print('🔧 CouponDialog - 현재 선택된 트리거: $_selectedTriggerIds');
-        }
-      }
+      setState(() {
+        _availableTriggers = data.cast<Map<String, dynamic>>();
+      });
+      print('🔧 CouponDialog - 트리거 로드 완료: ${_availableTriggers.length}개');
+      print('🔧 CouponDialog - 현재 선택된 트리거: $_selectedTriggerIds');
     } catch (e) {
       print('❌ CouponDialog - 자동발행 트리거 로드 오류: $e');
     } finally {

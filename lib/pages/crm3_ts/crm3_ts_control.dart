@@ -3,24 +3,18 @@ import 'package:intl/intl.dart';
 import 'dart:convert';
 import 'dart:async';
 import 'package:crypto/crypto.dart';
-import 'package:http/http.dart' as http;
 import '/models/ts_reservation.dart';
 import '/pages/crm2_member/tab1_membership/member_page/member_main.dart';
 import '/services/api_service.dart';
+import '/services/supabase_adapter.dart';
 import '../../constants/font_sizes.dart';
 import 'crm3_ts_control_otp.dart';
 import 'crm3_ts_control_time_adjust.dart';
 import 'crm3_ts_control_ts_move.dart';
 import 'crm3_ts_control_reservation_cancel.dart';
 
-// Helper methods for missing API functionality
+// Helper methods for missing API functionality (Supabase 마이그레이션 완료)
 class _ApiHelper {
-  static const String baseUrl = 'https://autofms.mycafe24.com/dynamic_api.php';
-  static const Map<String, String> headers = {
-    'Content-Type': 'application/json',
-    'Accept': 'application/json',
-  };
-
   static Future<List<Map<String, dynamic>>> getBillTimesData({
     List<Map<String, dynamic>>? where,
     String? orderBy,
@@ -28,40 +22,17 @@ class _ApiHelper {
     int? limit,
   }) async {
     try {
-      final requestData = {
-        'operation': 'get',
-        'table': 'v2_bill_times',
-        'fields': ['*'],
-      };
-      
-      if (where != null && where.isNotEmpty) {
-        requestData['where'] = where;
-      }
-      
+      List<Map<String, dynamic>>? orderByList;
       if (orderBy != null) {
-        requestData['orderBy'] = [{'field': orderBy, 'direction': order ?? 'ASC'}];
+        orderByList = [{'field': orderBy, 'direction': order ?? 'ASC'}];
       }
-      
-      if (limit != null) {
-        requestData['limit'] = limit;
-      }
-      
-      final response = await http.post(
-        Uri.parse(baseUrl),
-        headers: headers,
-        body: json.encode(requestData),
-      ).timeout(Duration(seconds: 15));
-      
-      if (response.statusCode == 200) {
-        final responseData = json.decode(response.body);
-        if (responseData['success'] == true) {
-          return List<Map<String, dynamic>>.from(responseData['data']);
-        } else {
-          throw Exception('API 오류: ${responseData['error']}');
-        }
-      } else {
-        throw Exception('HTTP 오류: ${response.statusCode}');
-      }
+
+      return await SupabaseAdapter.getData(
+        table: 'v2_bill_times',
+        where: where,
+        orderBy: orderByList,
+        limit: limit,
+      );
     } catch (e) {
       throw Exception('bill_times 데이터 조회 오류: $e');
     }
@@ -74,42 +45,19 @@ class _ApiHelper {
     int? limit,
   }) async {
     try {
-      final requestData = {
-        'operation': 'get',
-        'table': 'v2_bill_games',
-        'fields': ['*'],
-      };
-      
-      if (where != null && where.isNotEmpty) {
-        requestData['where'] = where;
-      }
-      
+      List<Map<String, dynamic>>? orderByList;
       if (orderBy != null) {
-        requestData['orderBy'] = [{'field': orderBy, 'direction': order ?? 'ASC'}];
+        orderByList = [{'field': orderBy, 'direction': order ?? 'ASC'}];
       }
-      
-      if (limit != null) {
-        requestData['limit'] = limit;
-      }
-      
-      final response = await http.post(
-        Uri.parse(baseUrl),
-        headers: headers,
-        body: json.encode(requestData),
-      ).timeout(Duration(seconds: 15));
-      
-      if (response.statusCode == 200) {
-        final responseData = json.decode(response.body);
-        if (responseData['success'] == true) {
-          return List<Map<String, dynamic>>.from(responseData['data']);
-        } else {
-          throw Exception('API 오류: ${responseData['error']}');
-        }
-      } else {
-        throw Exception('HTTP 오류: ${response.statusCode}');
-      }
+
+      return await SupabaseAdapter.getData(
+        table: 'v2_bill_games',
+        where: where,
+        orderBy: orderByList,
+        limit: limit,
+      );
     } catch (e) {
-      throw Exception('bill_games 데이터 조회 오료: $e');
+      throw Exception('bill_games 데이터 조회 오류: $e');
     }
   }
 }

@@ -5,6 +5,7 @@ import 'package:http/http.dart' as http;
 import '../../../services/api_service.dart';
 import '../../../services/upper_button_input_design.dart';
 import '../../../constants/font_sizes.dart';
+import '/services/supabase_adapter.dart';
 
 class Tab11CancellationPolicyWidget extends StatefulWidget {
   const Tab11CancellationPolicyWidget({super.key});
@@ -59,37 +60,24 @@ class _Tab11CancellationPolicyWidgetState extends State<Tab11CancellationPolicyW
       if (branchId == null || branchId.isEmpty) return;
       
       // 현재 지점의 취소 정책이 있는지 확인
-      final response = await http.post(
-        Uri.parse('https://autofms.mycafe24.com/dynamic_api.php'),
-        headers: {
-          'Content-Type': 'application/json',
-          'Accept': 'application/json',
-        },
-        body: json.encode({
-          'operation': 'get',
-          'table': 'v2_cancellation_policy',
-          'where': [
-            {'field': 'branch_id', 'operator': '=', 'value': branchId},
-          ],
-        }),
-      ).timeout(Duration(seconds: 15));
+      final data = await SupabaseAdapter.getData(
+        table: 'v2_cancellation_policy',
+        where: [
+          {'field': 'branch_id', 'operator': '=', 'value': branchId},
+        ],
+      );
 
-      if (response.statusCode == 200) {
-        final result = json.decode(response.body);
-        if (result['success'] == true) {
-          final data = result['data'] as List;
-          
-          // 각 카테고리별로 기본 정책이 있는지 확인하고 없으면 생성
-          for (var categoryEntry in _fixedCategories.entries) {
-            final category = categoryEntry.key;
-            final dbTable = categoryEntry.value['db_table'];
-            
-            final hasPolicy = data.any((policy) => policy['service_category'] == category);
-            
-            if (!hasPolicy) {
-              // 기본 취소 정책 생성
-              await _createDefaultPolicy(branchId, category, dbTable);
-            }
+      if (data.isNotEmpty) {
+        // 각 카테고리별로 기본 정책이 있는지 확인하고 없으면 생성
+        for (var categoryEntry in _fixedCategories.entries) {
+          final category = categoryEntry.key;
+          final dbTable = categoryEntry.value['db_table'];
+
+          final hasPolicy = data.any((policy) => policy['service_category'] == category);
+
+          if (!hasPolicy) {
+            // 기본 취소 정책 생성
+            await _createDefaultPolicy(branchId, category, dbTable);
           }
         }
       }
@@ -109,18 +97,10 @@ class _Tab11CancellationPolicyWidgetState extends State<Tab11CancellationPolicyW
         'apply_sequence': 1, // 최우선 순위
       };
       
-      await http.post(
-        Uri.parse('https://autofms.mycafe24.com/dynamic_api.php'),
-        headers: {
-          'Content-Type': 'application/json',
-          'Accept': 'application/json',
-        },
-        body: json.encode({
-          'operation': 'add',
-          'table': 'v2_cancellation_policy',
-          'data': policyData,
-        }),
-      ).timeout(Duration(seconds: 15));
+      await SupabaseAdapter.addData(
+        table: 'v2_cancellation_policy',
+        data: policyData,
+      );
     } catch (e) {
       print('기본 정책 생성 오류: $e');
     }
@@ -137,52 +117,31 @@ class _Tab11CancellationPolicyWidgetState extends State<Tab11CancellationPolicyW
         throw Exception('branch_id가 설정되지 않았습니다.');
       }
       
-      final requestBody = {
-        'operation': 'get',
-        'table': 'v2_cancellation_policy',
-        'where': [
+      final data = await SupabaseAdapter.getData(
+        table: 'v2_cancellation_policy',
+        where: [
           {'field': 'branch_id', 'operator': '=', 'value': branchId},
         ],
-        'orderBy': [
+        orderBy: [
           {'field': 'service_category', 'direction': 'ASC'},
           {'field': 'apply_sequence', 'direction': 'ASC'},
         ],
-      };
-      
-      final response = await http.post(
-        Uri.parse('https://autofms.mycafe24.com/dynamic_api.php'),
-        headers: {
-          'Content-Type': 'application/json',
-          'Accept': 'application/json',
-        },
-        body: json.encode(requestBody),
-      ).timeout(Duration(seconds: 15));
+      );
 
-      if (response.statusCode == 200) {
-        final result = json.decode(response.body);
-        if (result['success'] == true) {
-          final data = result['data'] as List;
-          
-          // 카테고리별로 정책 데이터 그룹화
-          final Map<String, List<Map<String, dynamic>>> policiesByCategory = {};
-          
-          for (var policy in data) {
-            final category = policy['service_category'];
-            if (!policiesByCategory.containsKey(category)) {
-              policiesByCategory[category] = [];
-            }
-            policiesByCategory[category]!.add(policy);
-          }
-          
-          setState(() {
-            _policiesByCategory = policiesByCategory;
-          });
-        } else {
-          throw Exception('정책 조회 실패: ${result['error'] ?? '알 수 없는 오류'}');
+      // 카테고리별로 정책 데이터 그룹화
+      final Map<String, List<Map<String, dynamic>>> policiesByCategory = {};
+
+      for (var policy in data) {
+        final category = policy['service_category'];
+        if (!policiesByCategory.containsKey(category)) {
+          policiesByCategory[category] = [];
         }
-      } else {
-        throw Exception('정책 조회 HTTP 오류: ${response.statusCode}');
+        policiesByCategory[category]!.add(policy);
       }
+
+      setState(() {
+        _policiesByCategory = policiesByCategory;
+      });
     } catch (e) {
       _showErrorSnackBar('데이터를 불러오는데 실패했습니다: $e');
     } finally {
@@ -226,30 +185,13 @@ class _Tab11CancellationPolicyWidgetState extends State<Tab11CancellationPolicyW
         'apply_sequence': nextSequence,
       };
       
-      final response = await http.post(
-        Uri.parse('https://autofms.mycafe24.com/dynamic_api.php'),
-        headers: {
-          'Content-Type': 'application/json',
-          'Accept': 'application/json',
-        },
-        body: json.encode({
-          'operation': 'add',
-          'table': 'v2_cancellation_policy',
-          'data': policyData,
-        }),
-      ).timeout(Duration(seconds: 15));
+      await SupabaseAdapter.addData(
+        table: 'v2_cancellation_policy',
+        data: policyData,
+      );
 
-      if (response.statusCode == 200) {
-        final result = json.decode(response.body);
-        if (result['success'] == true) {
-          _showSuccessSnackBar('취소규정이 저장되었습니다.');
-          _loadPolicies();
-        } else {
-          throw Exception('정책 저장 실패: ${result['error'] ?? '알 수 없는 오류'}');
-        }
-      } else {
-        throw Exception('정책 저장 HTTP 오류: ${response.statusCode}');
-      }
+      _showSuccessSnackBar('취소규정이 저장되었습니다.');
+      _loadPolicies();
     } catch (e) {
       _showErrorSnackBar('취소규정 저장에 실패했습니다: $e');
     } finally {
@@ -292,36 +234,19 @@ class _Tab11CancellationPolicyWidgetState extends State<Tab11CancellationPolicyW
         'db_table': _fixedCategories[category]?['db_table'] ?? 'v2_contracts',
       };
       
-      final response = await http.post(
-        Uri.parse('https://autofms.mycafe24.com/dynamic_api.php'),
-        headers: {
-          'Content-Type': 'application/json',
-          'Accept': 'application/json',
-        },
-        body: json.encode({
-          'operation': 'update',
-          'table': 'v2_cancellation_policy',
-          'data': updateData,
-          'where': [
-            {'field': 'branch_id', 'operator': '=', 'value': branchId},
-            {'field': 'service_category', 'operator': '=', 'value': originalPolicy['service_category']},
-            {'field': '_min_before_use', 'operator': '=', 'value': originalPolicy['_min_before_use'].toString()},
-            {'field': 'penalty_percent', 'operator': '=', 'value': originalPolicy['penalty_percent'].toString()},
-          ],
-        }),
-      ).timeout(Duration(seconds: 15));
+      await SupabaseAdapter.updateData(
+        table: 'v2_cancellation_policy',
+        data: updateData,
+        where: [
+          {'field': 'branch_id', 'operator': '=', 'value': branchId},
+          {'field': 'service_category', 'operator': '=', 'value': originalPolicy['service_category']},
+          {'field': '_min_before_use', 'operator': '=', 'value': originalPolicy['_min_before_use'].toString()},
+          {'field': 'penalty_percent', 'operator': '=', 'value': originalPolicy['penalty_percent'].toString()},
+        ],
+      );
 
-      if (response.statusCode == 200) {
-        final result = json.decode(response.body);
-        if (result['success'] == true) {
-          _showSuccessSnackBar('취소규정이 수정되었습니다.');
-          _loadPolicies();
-        } else {
-          throw Exception('정책 수정 실패: ${result['error'] ?? '알 수 없는 오류'}');
-        }
-      } else {
-        throw Exception('정책 수정 HTTP 오류: ${response.statusCode}');
-      }
+      _showSuccessSnackBar('취소규정이 수정되었습니다.');
+      _loadPolicies();
     } catch (e) {
       _showErrorSnackBar('취소규정 수정에 실패했습니다: $e');
     } finally {
@@ -339,36 +264,19 @@ class _Tab11CancellationPolicyWidgetState extends State<Tab11CancellationPolicyW
     try {
       final branchId = ApiService.getCurrentBranchId();
       
-      final response = await http.post(
-        Uri.parse('https://autofms.mycafe24.com/dynamic_api.php'),
-        headers: {
-          'Content-Type': 'application/json',
-          'Accept': 'application/json',
-        },
-        body: json.encode({
-          'operation': 'delete',
-          'table': 'v2_cancellation_policy',
-          'where': [
-            {'field': 'branch_id', 'operator': '=', 'value': branchId},
-            {'field': 'service_category', 'operator': '=', 'value': policy['service_category']},
-            {'field': '_min_before_use', 'operator': '=', 'value': policy['_min_before_use'].toString()},
-            {'field': 'penalty_percent', 'operator': '=', 'value': policy['penalty_percent'].toString()},
-          ],
-        }),
-      ).timeout(Duration(seconds: 15));
+      await SupabaseAdapter.deleteData(
+        table: 'v2_cancellation_policy',
+        where: [
+          {'field': 'branch_id', 'operator': '=', 'value': branchId},
+          {'field': 'service_category', 'operator': '=', 'value': policy['service_category']},
+          {'field': '_min_before_use', 'operator': '=', 'value': policy['_min_before_use'].toString()},
+          {'field': 'penalty_percent', 'operator': '=', 'value': policy['penalty_percent'].toString()},
+        ],
+      );
 
-      if (response.statusCode == 200) {
-        final result = json.decode(response.body);
-        if (result['success'] == true) {
-          _showSuccessSnackBar('취소규정이 삭제되었습니다.');
-          await _reorderSequence(policy['service_category']);
-          _loadPolicies();
-        } else {
-          throw Exception('정책 삭제 실패: ${result['error'] ?? '알 수 없는 오류'}');
-        }
-      } else {
-        throw Exception('정책 삭제 HTTP 오류: ${response.statusCode}');
-      }
+      _showSuccessSnackBar('취소규정이 삭제되었습니다.');
+      await _reorderSequence(policy['service_category']);
+      _loadPolicies();
     } catch (e) {
       _showErrorSnackBar('취소규정 삭제에 실패했습니다: $e');
     } finally {
@@ -384,55 +292,34 @@ class _Tab11CancellationPolicyWidgetState extends State<Tab11CancellationPolicyW
       final branchId = ApiService.getCurrentBranchId();
       
       // 해당 카테고리의 남은 정책들을 가져와서 sequence 재정렬
-      final response = await http.post(
-        Uri.parse('https://autofms.mycafe24.com/dynamic_api.php'),
-        headers: {
-          'Content-Type': 'application/json',
-          'Accept': 'application/json',
-        },
-        body: json.encode({
-          'operation': 'get',
-          'table': 'v2_cancellation_policy',
-          'where': [
-            {'field': 'branch_id', 'operator': '=', 'value': branchId},
-            {'field': 'service_category', 'operator': '=', 'value': category},
-          ],
-          'orderBy': [
-            {'field': 'penalty_percent', 'direction': 'DESC'},
-            {'field': '_min_before_use', 'direction': 'DESC'},
-          ],
-        }),
-      ).timeout(Duration(seconds: 15));
-      
-      if (response.statusCode == 200) {
-        final result = json.decode(response.body);
-        if (result['success'] == true) {
-          final policies = result['data'] as List;
-          
-          // 각 정책에 새로운 sequence 번호 할당
-          for (int i = 0; i < policies.length; i++) {
-            final policy = policies[i];
-            final newSequence = i + 1;
-            
-            await http.post(
-              Uri.parse('https://autofms.mycafe24.com/dynamic_api.php'),
-              headers: {
-                'Content-Type': 'application/json',
-                'Accept': 'application/json',
-              },
-              body: json.encode({
-                'operation': 'update',
-                'table': 'v2_cancellation_policy',
-                'data': {'apply_sequence': newSequence},
-                'where': [
-                  {'field': 'branch_id', 'operator': '=', 'value': branchId},
-                  {'field': 'service_category', 'operator': '=', 'value': category},
-                  {'field': '_min_before_use', 'operator': '=', 'value': policy['_min_before_use'].toString()},
-                  {'field': 'penalty_percent', 'operator': '=', 'value': policy['penalty_percent'].toString()},
-                ],
-              }),
-            ).timeout(Duration(seconds: 15));
-          }
+      final policies = await SupabaseAdapter.getData(
+        table: 'v2_cancellation_policy',
+        where: [
+          {'field': 'branch_id', 'operator': '=', 'value': branchId},
+          {'field': 'service_category', 'operator': '=', 'value': category},
+        ],
+        orderBy: [
+          {'field': 'penalty_percent', 'direction': 'DESC'},
+          {'field': '_min_before_use', 'direction': 'DESC'},
+        ],
+      );
+
+      if (policies.isNotEmpty) {
+        // 각 정책에 새로운 sequence 번호 할당
+        for (int i = 0; i < policies.length; i++) {
+          final policy = policies[i];
+          final newSequence = i + 1;
+
+          await SupabaseAdapter.updateData(
+            table: 'v2_cancellation_policy',
+            data: {'apply_sequence': newSequence},
+            where: [
+              {'field': 'branch_id', 'operator': '=', 'value': branchId},
+              {'field': 'service_category', 'operator': '=', 'value': category},
+              {'field': '_min_before_use', 'operator': '=', 'value': policy['_min_before_use'].toString()},
+              {'field': 'penalty_percent', 'operator': '=', 'value': policy['penalty_percent'].toString()},
+            ],
+          );
         }
       }
     } catch (e) {

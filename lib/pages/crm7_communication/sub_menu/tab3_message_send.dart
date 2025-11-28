@@ -6,6 +6,7 @@ import '../../../services/api_service.dart';
 import '../../../services/chat_service.dart';
 import '../../../services/upper_button_input_design.dart';
 import '../../../models/chat_models.dart';
+import '/services/supabase_adapter.dart';
 
 class Tab3MessageSendWidget extends StatefulWidget {
   @override
@@ -104,61 +105,30 @@ class _Tab3MessageSendWidgetState extends State<Tab3MessageSendWidget> {
       print('=== 메시지 데이터 로드 시작 ===');
       print('Branch ID: $branchId');
       
-      final requestBody = {
-        'operation': 'get',
-        'table': 'v2_message',
-        'fields': ['msg_id', 'msg_type', 'member_id', 'member_name', 'member_phone', 'msg', 'msg_status', 'msg_sent_at', 'message_read_at', 'msg_date', 'msg_plantime', 'push_status', 'push_timestamp', 'push_agreement'],
-        'where': [
+      final data = await SupabaseAdapter.getData(
+        table: 'v2_message',
+        fields: ['msg_id', 'msg_type', 'member_id', 'member_name', 'member_phone', 'msg', 'msg_status', 'msg_sent_at', 'message_read_at', 'msg_date', 'msg_plantime', 'push_status', 'push_timestamp', 'push_agreement'],
+        where: [
           {
             'field': 'branch_id',
             'operator': '=',
             'value': branchId
           }
         ],
-        'orderBy': [
+        orderBy: [
           {
             'field': 'msg_id',
             'direction': 'DESC'
           }
         ],
-      };
-      
-      print('Request Body: ${jsonEncode(requestBody)}');
-      
-      final response = await http.post(
-        Uri.parse('https://autofms.mycafe24.com/dynamic_api.php'),
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode(requestBody),
       );
 
-      print('Response Status Code: ${response.statusCode}');
-      print('Response Body: ${response.body}');
-      
-      if (response.statusCode == 200) {
-        final result = jsonDecode(response.body);
-        print('Parsed Result: $result');
-        
-        if (result['success'] == true && result['data'] != null) {
-          setState(() {
-            _messageData = List<Map<String, dynamic>>.from(result['data']);
-            _filterData();
-            _isLoading = false;
-          });
-          print('데이터 로드 성공: ${_messageData.length}개의 메시지');
-        } else {
-          setState(() {
-            _errorMessage = result['message'] ?? '데이터를 불러오는데 실패했습니다.';
-            _isLoading = false;
-          });
-          print('API 실패: ${result['message']}');
-        }
-      } else {
-        setState(() {
-          _errorMessage = '서버 오류가 발생했습니다. (상태 코드: ${response.statusCode})';
-          _isLoading = false;
-        });
-        print('HTTP 오류: ${response.statusCode}');
-      }
+      setState(() {
+        _messageData = data;
+        _filterData();
+        _isLoading = false;
+      });
+      print('데이터 로드 성공: ${_messageData.length}개의 메시지');
     } catch (e, stackTrace) {
       setState(() {
         _errorMessage = '오류가 발생했습니다: $e';
@@ -875,86 +845,61 @@ class _Tab3MessageSendWidgetState extends State<Tab3MessageSendWidget> {
       final branchId = ApiService.getCurrentBranchId() ?? 'test';
       print('Branch ID: $branchId');
       
-      final requestBody = {
-        'operation': 'get',
-        'table': 'v3_members',
-        'fields': ['member_id', 'member_name', 'member_phone', 'member_type', 'member_nickname', 'member_gender'],
-        'where': [
+      // 전체 데이터 먼저 로드
+      final allMembersData = await SupabaseAdapter.getData(
+        table: 'v3_members',
+        fields: ['member_id', 'member_name', 'member_phone', 'member_type', 'member_nickname', 'member_gender'],
+        where: [
           {
             'field': 'branch_id',
             'operator': '=',
             'value': branchId
           }
         ],
-        'orderBy': [
+        orderBy: [
           {
             'field': 'member_name',
             'direction': 'ASC'
           }
         ],
-      };
-      
-      print('Request Body: ${jsonEncode(requestBody)}');
-      
-      // 전체 데이터 먼저 로드
-      final response = await http.post(
-        Uri.parse('https://autofms.mycafe24.com/dynamic_api.php'),
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode(requestBody),
       );
 
-      print('Response Status Code: ${response.statusCode}');
-      print('Response Body: ${response.body}');
+      // 검색 키워드가 있는 경우 필터링
+      if (searchKeyword.isNotEmpty) {
+        print('검색 모드: 메모리에서 필터링');
 
-      if (response.statusCode == 200) {
-        final result = jsonDecode(response.body);
-        print('Parsed Result: $result');
-        
-        if (result['success'] == true && result['data'] != null) {
-          final allMembersData = List<Map<String, dynamic>>.from(result['data']);
-          
-          // 검색 키워드가 있는 경우 필터링
-          if (searchKeyword.isNotEmpty) {
-            print('검색 모드: 메모리에서 필터링');
-            
-            // 필터링
-            final filteredMembers = allMembersData.where((member) {
-              final memberName = (member['member_name'] ?? '').toString().toLowerCase();
-              final memberPhone = (member['member_phone'] ?? '').toString();
-              final memberId = (member['member_id'] ?? '').toString();
-              
-              final searchLower = searchKeyword.toLowerCase();
-              final phoneWithoutHyphen = memberPhone.replaceAll('-', '').toLowerCase();
-              final searchWithoutHyphen = searchKeyword.replaceAll('-', '');
-              
-              return memberName.contains(searchLower) ||
-                     memberPhone.toLowerCase().contains(searchLower) ||
-                     phoneWithoutHyphen.contains(searchWithoutHyphen) ||
-                     memberId.contains(searchKeyword);
-            }).toList();
-            
-            print('검색 결과: ${filteredMembers.length}개');
-            final updateState = dialogSetState ?? setState;
-            updateState(() {
-              _allMembers = allMembersData;
-              _memberList = filteredMembers;
-            });
-          } else {
-            // 검색어가 없으면 전체 표시
-            print('전체 데이터 표시');
-            final updateState = dialogSetState ?? setState;
-            updateState(() {
-              _allMembers = allMembersData;
-              _memberList = allMembersData;
-            });
-          }
-          print('회원 데이터 로드 성공: ${_memberList.length}개');
-        } else {
-          print('API 실패: ${result['message'] ?? 'Unknown error'}');
-        }
+        // 필터링
+        final filteredMembers = allMembersData.where((member) {
+          final memberName = (member['member_name'] ?? '').toString().toLowerCase();
+          final memberPhone = (member['member_phone'] ?? '').toString();
+          final memberId = (member['member_id'] ?? '').toString();
+
+          final searchLower = searchKeyword.toLowerCase();
+          final phoneWithoutHyphen = memberPhone.replaceAll('-', '').toLowerCase();
+          final searchWithoutHyphen = searchKeyword.replaceAll('-', '');
+
+          return memberName.contains(searchLower) ||
+                 memberPhone.toLowerCase().contains(searchLower) ||
+                 phoneWithoutHyphen.contains(searchWithoutHyphen) ||
+                 memberId.contains(searchKeyword);
+        }).toList();
+
+        print('검색 결과: ${filteredMembers.length}개');
+        final updateState = dialogSetState ?? setState;
+        updateState(() {
+          _allMembers = allMembersData;
+          _memberList = filteredMembers;
+        });
       } else {
-        print('HTTP 오류: ${response.statusCode}');
+        // 검색어가 없으면 전체 표시
+        print('전체 데이터 표시');
+        final updateState = dialogSetState ?? setState;
+        updateState(() {
+          _allMembers = allMembersData;
+          _memberList = allMembersData;
+        });
       }
+      print('회원 데이터 로드 성공: ${_memberList.length}개');
     } catch (e, stackTrace) {
       print('Error loading members: $e');
       print('Stack Trace: $stackTrace');
@@ -2523,33 +2468,19 @@ class _Tab3MessageSendWidgetState extends State<Tab3MessageSendWidget> {
         
         // push_agreement 확인
         print('Push agreement 확인 시작...');
-        final agreementRequestBody = {
-          'operation': 'get',
-          'table': 'v2_message_agreement',
-          'fields': ['push_agreement'],
-          'where': [
+        final agreementData = await SupabaseAdapter.getData(
+          table: 'v2_message_agreement',
+          fields: ['push_agreement'],
+          where: [
             {'field': 'branch_id', 'operator': '=', 'value': branchId},
             {'field': 'member_id', 'operator': '=', 'value': member['member_id']},
             {'field': 'msg_type', 'operator': '=', 'value': _selectedMsgType},
           ],
-        };
-        print('Agreement Request: ${jsonEncode(agreementRequestBody)}');
-        
-        final agreementResponse = await http.post(
-          Uri.parse('https://autofms.mycafe24.com/dynamic_api.php'),
-          headers: {'Content-Type': 'application/json'},
-          body: jsonEncode(agreementRequestBody),
         );
-        
-        print('Agreement Response Status: ${agreementResponse.statusCode}');
-        print('Agreement Response Body: ${agreementResponse.body}');
-        
+
         String pushAgreement = '미확인'; // 기본값
-        if (agreementResponse.statusCode == 200) {
-          final agreementResult = jsonDecode(agreementResponse.body);
-          if (agreementResult['success'] == true && agreementResult['data'] != null && agreementResult['data'].isNotEmpty) {
-            pushAgreement = agreementResult['data'][0]['push_agreement'] ?? '미확인';
-          }
+        if (agreementData.isNotEmpty) {
+          pushAgreement = agreementData[0]['push_agreement'] ?? '미확인';
         }
         print('Push Agreement: $pushAgreement');
         
@@ -2578,10 +2509,9 @@ class _Tab3MessageSendWidgetState extends State<Tab3MessageSendWidget> {
         }
         
         // 기존 API 서비스와 동일한 패턴 사용
-        final messageData = {
-          'operation': 'add',
-          'table': 'v2_message',
-          'data': {
+        await SupabaseAdapter.addData(
+          table: 'v2_message',
+          data: {
             'branch_id': branchId,
             'msg_type': _selectedMsgType,
             'member_id': member['member_id'],
@@ -2596,62 +2526,42 @@ class _Tab3MessageSendWidgetState extends State<Tab3MessageSendWidget> {
             'msg_registered_at': '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')} ${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}:${now.second.toString().padLeft(2, '0')}',
             'sent_by': ApiService.getCurrentBranch()?['branch_name'] ?? '',
           },
-        };
-        
-        print('SIMPLE Message Request: ${jsonEncode(messageData)}');
-        
-        final messageResponse = await http.post(
-          Uri.parse('https://autofms.mycafe24.com/dynamic_api.php'),
-          headers: {'Content-Type': 'application/json'},
-          body: jsonEncode(messageData),
         );
-        
-        print('SIMPLE Response Status: ${messageResponse.statusCode}');
-        print('SIMPLE Response Body: ${messageResponse.body}');
-        
-        if (messageResponse.statusCode != 200) {
-          print('1:1채팅 메시지 등록 실패: HTTP ${messageResponse.statusCode}');
-        } else {
-          final messageResult = jsonDecode(messageResponse.body);
-          if (messageResult['success'] != true) {
-            print('1:1채팅 메시지 등록 API 실패: ${messageResult['message'] ?? messageResult['error'] ?? 'Unknown error'}');
-          } else {
-            print('멤버 ${member['member_name']} 1:1채팅 메시지 등록 성공!');
-            
-            // Firebase 1:1 채팅으로도 메시지 전송 (즉시 발송인 경우에만)
-            if (!_isScheduled) {
-              try {
-                print('🔥 Firebase 채팅 메시지 전송 시작...');
-                
-                // 채팅방 생성 또는 가져오기
-                final chatRoom = await ChatService.getOrCreateChatRoom(
-                  member['member_id'].toString(),
-                  member['member_name'] ?? '고객',
-                  member['member_phone'] ?? '',
-                  member['member_type'] ?? '일반',
-                );
-                
-                print('📬 채팅방 ID: ${chatRoom.id}');
-                
-                // 메시지 타입에 따라 1:1채팅 메시지 내용 포맷팅
-                String formattedMessage = _messageController.text;
-                if (_selectedMsgType != '일반안내') {
-                  formattedMessage = '[$_selectedMsgType]\n${_messageController.text}';
-                }
-                
-                // 메시지 전송
-                await ChatService.sendMessage(
-                  chatRoom.id,
-                  member['member_id'].toString(),
-                  formattedMessage,
-                );
-                
-                print('✅ Firebase 채팅 메시지 전송 성공! 타입: $_selectedMsgType');
-              } catch (e) {
-                print('❌ Firebase 채팅 메시지 전송 실패: $e');
-                // Firebase 전송 실패는 무시하고 계속 진행 (기존 API는 성공했으므로)
-              }
+
+        print('멤버 ${member['member_name']} 1:1채팅 메시지 등록 성공!');
+
+        // Firebase 1:1 채팅으로도 메시지 전송 (즉시 발송인 경우에만)
+        if (!_isScheduled) {
+          try {
+            print('🔥 Firebase 채팅 메시지 전송 시작...');
+
+            // 채팅방 생성 또는 가져오기
+            final chatRoom = await ChatService.getOrCreateChatRoom(
+              member['member_id'].toString(),
+              member['member_name'] ?? '고객',
+              member['member_phone'] ?? '',
+              member['member_type'] ?? '일반',
+            );
+
+            print('📬 채팅방 ID: ${chatRoom.id}');
+
+            // 메시지 타입에 따라 1:1채팅 메시지 내용 포맷팅
+            String formattedMessage = _messageController.text;
+            if (_selectedMsgType != '일반안내') {
+              formattedMessage = '[$_selectedMsgType]\n${_messageController.text}';
             }
+
+            // 메시지 전송
+            await ChatService.sendMessage(
+              chatRoom.id,
+              member['member_id'].toString(),
+              formattedMessage,
+            );
+
+            print('✅ Firebase 채팅 메시지 전송 성공! 타입: $_selectedMsgType');
+          } catch (e) {
+            print('❌ Firebase 채팅 메시지 전송 실패: $e');
+            // Firebase 전송 실패는 무시하고 계속 진행 (기존 API는 성공했으므로)
           }
         }
         

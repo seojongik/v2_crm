@@ -103,23 +103,9 @@ class Tab1MemoTabModel extends ChangeNotifier {
 
       for (var board in boardData) {
         print('Board 처리 중: ${board['board_id']} - ${board['title']}');
-        
-        // Staff 정보 가져오기
-        String staffName = '관리자';
-        try {
-          final staffData = await ApiService.getStaffData(
-            where: [
-              {'field': 'staff_id', 'operator': '=', 'value': board['staff_id']},
-              {'field': 'branch_id', 'operator': '=', 'value': ApiService.getCurrentBranchId()}
-            ],
-            limit: 1,
-          );
-          if (staffData.isNotEmpty) {
-            staffName = staffData[0]['staff_name'] ?? '관리자';
-          }
-        } catch (e) {
-          print('Staff 정보 로드 오류: $e');
-        }
+
+        // 작성자 이름 (manager_name이 있으면 사용)
+        String staffName = board['manager_name'] ?? '관리자';
 
         // Member 정보 가져오기
         String? memberName;
@@ -154,21 +140,8 @@ class Tab1MemoTabModel extends ChangeNotifier {
           );
 
           for (var comment in commentData) {
-            String commentStaffName = '관리자';
-            try {
-              final commentStaffData = await ApiService.getStaffData(
-                where: [
-                  {'field': 'staff_id', 'operator': '=', 'value': comment['staff_id']},
-                  {'field': 'branch_id', 'operator': '=', 'value': ApiService.getCurrentBranchId()}
-                ],
-                limit: 1,
-              );
-              if (commentStaffData.isNotEmpty) {
-                commentStaffName = commentStaffData[0]['staff_name'] ?? '관리자';
-              }
-            } catch (e) {
-              print('댓글 Staff 정보 로드 오류: $e');
-            }
+            // 작성자 이름 (manager_name 또는 pro_name 사용)
+            String commentStaffName = comment['manager_name'] ?? comment['pro_name'] ?? '관리자';
 
             comments.add({
               ...comment,
@@ -216,14 +189,19 @@ class Tab1MemoTabModel extends ChangeNotifier {
     required String title,
     required String content,
     required String boardType,
-    required int staffId,
   }) async {
     try {
+      // 로그인한 직원 정보 가져오기
+      final currentUser = ApiService.getCurrentUser();
+      final managerId = currentUser?['manager_contract_id'] ?? currentUser?['pro_contract_id'];
+      final managerName = currentUser?['manager_name'] ?? currentUser?['pro_name'] ?? '관리자';
+
       final data = {
         'title': title,
         'content': content,
         'board_type': boardType,
-        'staff_id': staffId,
+        'manager_id': managerId,
+        'manager_name': managerName,
         'member_id': _memberId,
         'branch_id': ApiService.getCurrentBranchId(),
         'created_at': DateTime.now().toIso8601String(),

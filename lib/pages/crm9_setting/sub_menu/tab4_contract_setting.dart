@@ -9,6 +9,7 @@ import '../../../services/upper_button_input_design.dart';
 import '../../../constants/font_sizes.dart';
 import 'tab4_contract_setting_program.dart';
 import 'tab4_contract_setting_terms.dart' as terms;
+import '/services/supabase_adapter.dart';
 
 // 1,000단위 콤마 자동 입력 포맷터
 class ThousandsSeparatorInputFormatter extends TextInputFormatter {
@@ -1121,28 +1122,11 @@ class _Tab4ContractSettingWidgetState extends State<Tab4ContractSettingWidget> {
       
       // 각 설정 저장
       for (var setting in newSettings) {
-        final response = await http.post(
-          Uri.parse('https://autofms.mycafe24.com/dynamic_api.php'),
-          headers: {
-            'Content-Type': 'application/json',
-            'Accept': 'application/json',
-          },
-          body: json.encode({
-            'operation': 'add',
-            'table': 'v2_base_option_setting',
-            'data': setting,
-          }),
+        await SupabaseAdapter.addData(
+          table: 'v2_base_option_setting',
+          data: setting,
         );
-        
-        if (response.statusCode != 200) {
-          throw Exception('설정 저장 HTTP 오류: ${response.statusCode}');
-        }
-        
-        final result = json.decode(response.body);
-        if (result['success'] != true) {
-          throw Exception('설정 저장 실패: ${result['error'] ?? '알 수 없는 오류'}');
-        }
-        
+
         print('설정 저장 완료: ${setting['field_name']} = ${setting['option_value']}');
       }
       
@@ -1721,81 +1705,66 @@ class _ContractDialogState extends State<ContractDialog> {
       final branchId = ApiService.getCurrentBranchId();
       if (branchId == null) return;
       
-      final response = await http.post(
-        Uri.parse('https://autofms.mycafe24.com/dynamic_api.php'),
-        headers: {
-          'Content-Type': 'application/json',
-          'Accept': 'application/json',
-        },
-        body: json.encode({
-          'operation': 'get',
-          'table': 'v2_base_option_setting',
-          'where': [
-            {'field': 'branch_id', 'operator': '=', 'value': branchId},
-            {'field': 'category', 'operator': '=', 'value': '특수타석예약'},
-            {'field': 'field_name', 'operator': '=', 'value': 'program_id'},
-            {'field': 'setting_status', 'operator': '=', 'value': '유효'},
-          ],
-        }),
+      final programs = await SupabaseAdapter.getData(
+        table: 'v2_base_option_setting',
+        where: [
+          {'field': 'branch_id', 'operator': '=', 'value': branchId},
+          {'field': 'category', 'operator': '=', 'value': '특수타석예약'},
+          {'field': 'field_name', 'operator': '=', 'value': 'program_id'},
+          {'field': 'setting_status', 'operator': '=', 'value': '유효'},
+        ],
       );
-      
-      if (response.statusCode == 200) {
-        final result = json.decode(response.body);
-        print('API 전체 응답: ${result}');
-        if (result['success'] == true && result['data'] != null) {
-          final programs = result['data'] as List;
-          print('API에서 반환된 원시 데이터: ${programs}');
-          setState(() {
-            _availablePrograms = programs.map((p) => {
-              'program_id': p['option_value'],
-              'program_name': p['table_name'],
-            }).toList();
-            
-            // 임시 프로그램 데이터가 있으면 목록에 추가
-            if (_temporaryProgramData != null) {
-              final tempProgramId = _temporaryProgramData!['program_id'];
-              final tempProgramName = _temporaryProgramData!['program_name'];
-              
-              // 이미 존재하는지 확인
-              final exists = _availablePrograms.any((p) => p['program_id'] == tempProgramId);
-              if (!exists) {
-                _availablePrograms.insert(0, {
-                  'program_id': tempProgramId,
-                  'program_name': tempProgramName,
-                });
-                print('✨ 임시 프로그램을 목록에 추가: $tempProgramName ($tempProgramId)');
-              }
-            }
-            
-            print('변환된 프로그램 목록: ${_availablePrograms}');
-            print('로드된 프로그램 목록: ${_availablePrograms}');
-            print('현재 선택된 프로그램 ID: ${_selectedProgramId}');
-            
-            // 선택된 프로그램 이름 설정 - 임시 데이터 우선 확인
-            if (_selectedProgramId.isNotEmpty) {
-              // 먼저 임시 프로그램 데이터 확인 (신규 프로그램인 경우)
-              if (_temporaryProgramData != null && _temporaryProgramData!['program_id'] == _selectedProgramId) {
-                _selectedProgramName = _temporaryProgramData!['program_name'] ?? '';
-                print('임시 프로그램 데이터에서 매칭: ${_temporaryProgramData!['program_name']}');
-              } else {
-                // API에서 로드된 프로그램 목록에서 찾기
-                final selectedProgram = _availablePrograms.firstWhere(
-                  (p) => p['program_id'] == _selectedProgramId,
-                  orElse: () => {},
-                );
-                if (selectedProgram.isNotEmpty) {
-                  _selectedProgramName = selectedProgram['program_name'] ?? '';
-                  print('API 데이터에서 매칭: ${selectedProgram}');
-                  print('설정된 프로그램 이름: ${_selectedProgramName}');
-                } else {
-                  print('⚠️ 프로그램 ID ${_selectedProgramId}에 매칭되는 프로그램을 찾을 수 없습니다.');
-                  _selectedProgramName = '프로그램 정보 불일치 (ID: ${_selectedProgramId})';
-                }
-              }
-            }
-          });
+
+      print('API에서 반환된 원시 데이터: ${programs}');
+      setState(() {
+        _availablePrograms = programs.map((p) => {
+          'program_id': p['option_value'],
+          'program_name': p['table_name'],
+        }).toList();
+
+        // 임시 프로그램 데이터가 있으면 목록에 추가
+        if (_temporaryProgramData != null) {
+          final tempProgramId = _temporaryProgramData!['program_id'];
+          final tempProgramName = _temporaryProgramData!['program_name'];
+
+          // 이미 존재하는지 확인
+          final exists = _availablePrograms.any((p) => p['program_id'] == tempProgramId);
+          if (!exists) {
+            _availablePrograms.insert(0, {
+              'program_id': tempProgramId,
+              'program_name': tempProgramName,
+            });
+            print('✨ 임시 프로그램을 목록에 추가: $tempProgramName ($tempProgramId)');
+          }
         }
-      }
+
+        print('변환된 프로그램 목록: ${_availablePrograms}');
+        print('로드된 프로그램 목록: ${_availablePrograms}');
+        print('현재 선택된 프로그램 ID: ${_selectedProgramId}');
+
+        // 선택된 프로그램 이름 설정 - 임시 데이터 우선 확인
+        if (_selectedProgramId.isNotEmpty) {
+          // 먼저 임시 프로그램 데이터 확인 (신규 프로그램인 경우)
+          if (_temporaryProgramData != null && _temporaryProgramData!['program_id'] == _selectedProgramId) {
+            _selectedProgramName = _temporaryProgramData!['program_name'] ?? '';
+            print('임시 프로그램 데이터에서 매칭: ${_temporaryProgramData!['program_name']}');
+          } else {
+            // API에서 로드된 프로그램 목록에서 찾기
+            final selectedProgram = _availablePrograms.firstWhere(
+              (p) => p['program_id'] == _selectedProgramId,
+              orElse: () => {},
+            );
+            if (selectedProgram.isNotEmpty) {
+              _selectedProgramName = selectedProgram['program_name'] ?? '';
+              print('API 데이터에서 매칭: ${selectedProgram}');
+              print('설정된 프로그램 이름: ${_selectedProgramName}');
+            } else {
+              print('⚠️ 프로그램 ID ${_selectedProgramId}에 매칭되는 프로그램을 찾을 수 없습니다.');
+              _selectedProgramName = '프로그램 정보 불일치 (ID: ${_selectedProgramId})';
+            }
+          }
+        }
+      });
     } catch (e) {
       print('❌ 프로그램 로드 오류: $e');
     }
@@ -1828,91 +1797,77 @@ class _ContractDialogState extends State<ContractDialog> {
       print('🔍 프로그램 타임라인 로드 시작: $programId ($programName)');
       
       // 해당 프로그램의 모든 설정 데이터 가져오기 (table_name으로 검색)
-      final response = await http.post(
-        Uri.parse('https://autofms.mycafe24.com/dynamic_api.php'),
-        headers: {
-          'Content-Type': 'application/json',
-          'Accept': 'application/json',
-        },
-        body: json.encode({
-          'operation': 'get',
-          'table': 'v2_base_option_setting',
-          'where': [
-            {'field': 'branch_id', 'operator': '=', 'value': branchId},
-            {'field': 'category', 'operator': '=', 'value': '특수타석예약'},
-            {'field': 'table_name', 'operator': '=', 'value': programName},
-            {'field': 'setting_status', 'operator': '=', 'value': '유효'},
-          ],
-        }),
+      final settings = await SupabaseAdapter.getData(
+        table: 'v2_base_option_setting',
+        where: [
+          {'field': 'branch_id', 'operator': '=', 'value': branchId},
+          {'field': 'category', 'operator': '=', 'value': '특수타석예약'},
+          {'field': 'table_name', 'operator': '=', 'value': programName},
+          {'field': 'setting_status', 'operator': '=', 'value': '유효'},
+        ],
       );
-      
-      if (response.statusCode == 200) {
-        final result = json.decode(response.body);
-        print('📋 타임라인 API 응답: $result');
-        
-        if (result['success'] == true && result['data'] != null) {
-          final settings = result['data'] as List;
-          print('📊 로드된 설정 개수: ${settings.length}');
-          
-          Map<String, dynamic> programData = {'program_id': programId, 'program_name': programName};
-          List<Map<String, dynamic>> timelineSessions = [];
-          
-          for (var setting in settings) {
-            print('⚙️ 처리 중인 설정: ${setting}');
-            final fieldName = setting['field_name'];
-            final optionValue = setting['option_value'];
-            
-            switch (fieldName) {
-              case 'ts_min':
-                programData['ts_min'] = int.tryParse(optionValue) ?? 0;
-                break;
-              case 'min_player_no':
-                programData['min_player_no'] = int.tryParse(optionValue) ?? 1;
-                break;
-              case 'max_player_no':
-                programData['max_player_no'] = int.tryParse(optionValue) ?? 4;
-                break;
-              default:
-                // 레슨 시간 패턴: ls_min(1), ls_min(2), etc.
-                RegExp lessonPattern = RegExp(r'ls_min\((\d+)\)');
-                Match? lessonMatch = lessonPattern.firstMatch(fieldName);
-                if (lessonMatch != null) {
-                  int index = int.parse(lessonMatch.group(1)!) - 1;
-                  while (timelineSessions.length <= index) {
-                    timelineSessions.add({'type': 'lesson', 'duration': 0});
-                  }
-                  timelineSessions[index] = {
-                    'type': 'lesson',
-                    'duration': int.tryParse(optionValue) ?? 0
-                  };
+
+      print('📊 로드된 설정 개수: ${settings.length}');
+
+      if (settings.isNotEmpty) {
+        Map<String, dynamic> programData = {'program_id': programId, 'program_name': programName};
+        List<Map<String, dynamic>> timelineSessions = [];
+
+        for (var setting in settings) {
+          print('⚙️ 처리 중인 설정: ${setting}');
+          final fieldName = setting['field_name'];
+          final optionValue = setting['option_value'];
+
+          switch (fieldName) {
+            case 'ts_min':
+              programData['ts_min'] = int.tryParse(optionValue) ?? 0;
+              break;
+            case 'min_player_no':
+              programData['min_player_no'] = int.tryParse(optionValue) ?? 1;
+              break;
+            case 'max_player_no':
+              programData['max_player_no'] = int.tryParse(optionValue) ?? 4;
+              break;
+            default:
+              // 레슨 시간 패턴: ls_min(1), ls_min(2), etc.
+              RegExp lessonPattern = RegExp(r'ls_min\((\d+)\)');
+              Match? lessonMatch = lessonPattern.firstMatch(fieldName);
+              if (lessonMatch != null) {
+                int index = int.parse(lessonMatch.group(1)!) - 1;
+                while (timelineSessions.length <= index) {
+                  timelineSessions.add({'type': 'lesson', 'duration': 0});
                 }
-                
-                // 브레이크 시간 패턴: ls_break_min(1), ls_break_min(2), etc.
-                RegExp breakPattern = RegExp(r'ls_break_min\((\d+)\)');
-                Match? breakMatch = breakPattern.firstMatch(fieldName);
-                if (breakMatch != null) {
-                  int index = int.parse(breakMatch.group(1)!) - 1;
-                  while (timelineSessions.length <= index) {
-                    timelineSessions.add({'type': 'break', 'duration': 0});
-                  }
-                  timelineSessions[index] = {
-                    'type': 'break',
-                    'duration': int.tryParse(optionValue) ?? 0
-                  };
+                timelineSessions[index] = {
+                  'type': 'lesson',
+                  'duration': int.tryParse(optionValue) ?? 0
+                };
+              }
+
+              // 브레이크 시간 패턴: ls_break_min(1), ls_break_min(2), etc.
+              RegExp breakPattern = RegExp(r'ls_break_min\((\d+)\)');
+              Match? breakMatch = breakPattern.firstMatch(fieldName);
+              if (breakMatch != null) {
+                int index = int.parse(breakMatch.group(1)!) - 1;
+                while (timelineSessions.length <= index) {
+                  timelineSessions.add({'type': 'break', 'duration': 0});
                 }
-                break;
-            }
+                timelineSessions[index] = {
+                  'type': 'break',
+                  'duration': int.tryParse(optionValue) ?? 0
+                };
+              }
+              break;
           }
-          
-          // 0분인 세션 제거
-          timelineSessions = timelineSessions.where((session) => session['duration'] > 0).toList();
-          programData['timeline_sessions'] = timelineSessions;
-          
-          print('🎯 최종 프로그램 데이터: $programData');
-          print('⏰ 타임라인 세션 개수: ${timelineSessions.length}');
-          
-          return programData;
         }
+
+        // 0분인 세션 제거
+        timelineSessions = timelineSessions.where((session) => session['duration'] > 0).toList();
+        programData['timeline_sessions'] = timelineSessions;
+
+        print('🎯 최종 프로그램 데이터: $programData');
+        print('⏰ 타임라인 세션 개수: ${timelineSessions.length}');
+
+        return programData;
       }
     } catch (e) {
       print('❌ 프로그램 타임라인 로드 오류: $e');
@@ -2533,72 +2488,41 @@ class _ContractDialogState extends State<ContractDialog> {
       print('프로그램 비활성화 시작: $programId ($programName)');
       
       // 해당 프로그램의 모든 설정 조회
-      final response = await http.post(
-        Uri.parse('https://autofms.mycafe24.com/dynamic_api.php'),
-        headers: {
-          'Content-Type': 'application/json',
-          'Accept': 'application/json',
-        },
-        body: json.encode({
-          'operation': 'get',
-          'table': 'v2_base_option_setting',
-          'where': [
-            {'field': 'branch_id', 'operator': '=', 'value': branchId},
-            {'field': 'category', 'operator': '=', 'value': '특수타석예약'},
-            {'field': 'table_name', 'operator': '=', 'value': programName},
-            {'field': 'setting_status', 'operator': '=', 'value': '유효'},
-          ],
-        }),
+      final settings = await SupabaseAdapter.getData(
+        table: 'v2_base_option_setting',
+        where: [
+          {'field': 'branch_id', 'operator': '=', 'value': branchId},
+          {'field': 'category', 'operator': '=', 'value': '특수타석예약'},
+          {'field': 'table_name', 'operator': '=', 'value': programName},
+          {'field': 'setting_status', 'operator': '=', 'value': '유효'},
+        ],
       );
-      
-      if (response.statusCode == 200) {
-        final result = json.decode(response.body);
-        if (result['success'] == true && result['data'] != null) {
-          final settings = result['data'] as List;
-          print('비활성화할 설정 개수: ${settings.length}');
-          
-          // 각 설정의 setting_status를 '만료'로 업데이트
-          for (var setting in settings) {
-            final updateResponse = await http.post(
-              Uri.parse('https://autofms.mycafe24.com/dynamic_api.php'),
-              headers: {
-                'Content-Type': 'application/json',
-                'Accept': 'application/json',
-              },
-              body: json.encode({
-                'operation': 'update',
-                'table': 'v2_base_option_setting',
-                'data': {
-                  'setting_status': '만료',
-                },
-                'where': [
-                  {'field': 'branch_id', 'operator': '=', 'value': setting['branch_id']},
-                  {'field': 'category', 'operator': '=', 'value': setting['category']},
-                  {'field': 'table_name', 'operator': '=', 'value': setting['table_name']},
-                  {'field': 'field_name', 'operator': '=', 'value': setting['field_name']},
-                  {'field': 'option_value', 'operator': '=', 'value': setting['option_value']},
-                ],
-              }),
-            );
-            
-            if (updateResponse.statusCode != 200) {
-              throw Exception('설정 비활성화 HTTP 오류: ${updateResponse.statusCode}');
-            }
-            
-            final updateResult = json.decode(updateResponse.body);
-            if (updateResult['success'] != true) {
-              throw Exception('설정 비활성화 실패: ${updateResult['error']}');
-            }
-            
-            print('비활성화 완료: ${setting['field_name']} = ${setting['option_value']}');
-          }
-          
-          print('프로그램 비활성화 완료: $programId');
-        } else {
-          print('해당 프로그램의 설정을 찾을 수 없습니다.');
+
+      print('비활성화할 설정 개수: ${settings.length}');
+
+      if (settings.isNotEmpty) {
+        // 각 설정의 setting_status를 '만료'로 업데이트
+        for (var setting in settings) {
+          await SupabaseAdapter.updateData(
+            table: 'v2_base_option_setting',
+            data: {
+              'setting_status': '만료',
+            },
+            where: [
+              {'field': 'branch_id', 'operator': '=', 'value': setting['branch_id']},
+              {'field': 'category', 'operator': '=', 'value': setting['category']},
+              {'field': 'table_name', 'operator': '=', 'value': setting['table_name']},
+              {'field': 'field_name', 'operator': '=', 'value': setting['field_name']},
+              {'field': 'option_value', 'operator': '=', 'value': setting['option_value']},
+            ],
+          );
+
+          print('비활성화 완료: ${setting['field_name']} = ${setting['option_value']}');
         }
+
+        print('프로그램 비활성화 완료: $programId');
       } else {
-        throw Exception('프로그램 설정 조회 HTTP 오류: ${response.statusCode}');
+        print('해당 프로그램의 설정을 찾을 수 없습니다.');
       }
       
       // v2_contracts 테이블에서 program_reservation_availability 필드도 클리어
@@ -2618,66 +2542,35 @@ class _ContractDialogState extends State<ContractDialog> {
       print('회원권 테이블에서 프로그램 매핑 클리어 시작: $programId');
       
       // 해당 프로그램 ID를 사용하는 회원권 조회
-      final response = await http.post(
-        Uri.parse('https://autofms.mycafe24.com/dynamic_api.php'),
-        headers: {
-          'Content-Type': 'application/json',
-          'Accept': 'application/json',
-        },
-        body: json.encode({
-          'operation': 'get',
-          'table': 'v2_contracts',
-          'fields': ['contract_id', 'program_reservation_availability'],
-          'where': [
-            {'field': 'branch_id', 'operator': '=', 'value': branchId},
-            {'field': 'program_reservation_availability', 'operator': '=', 'value': programId},
-          ],
-        }),
+      final contracts = await SupabaseAdapter.getData(
+        table: 'v2_contracts',
+        fields: ['contract_id', 'program_reservation_availability'],
+        where: [
+          {'field': 'branch_id', 'operator': '=', 'value': branchId},
+          {'field': 'program_reservation_availability', 'operator': '=', 'value': programId},
+        ],
       );
-      
-      if (response.statusCode == 200) {
-        final result = json.decode(response.body);
-        if (result['success'] == true && result['data'] != null) {
-          final contracts = result['data'] as List;
-          print('프로그램 매핑을 클리어할 회원권 개수: ${contracts.length}');
-          
-          // 각 회원권의 program_reservation_availability 필드를 null로 업데이트
-          for (var contract in contracts) {
-            final updateResponse = await http.post(
-              Uri.parse('https://autofms.mycafe24.com/dynamic_api.php'),
-              headers: {
-                'Content-Type': 'application/json',
-                'Accept': 'application/json',
-              },
-              body: json.encode({
-                'operation': 'update',
-                'table': 'v2_contracts',
-                'data': {
-                  'program_reservation_availability': null,
-                },
-                'where': [
-                  {'field': 'branch_id', 'operator': '=', 'value': branchId},
-                  {'field': 'contract_id', 'operator': '=', 'value': contract['contract_id']},
-                ],
-              }),
-            );
-            
-            if (updateResponse.statusCode == 200) {
-              final updateResult = json.decode(updateResponse.body);
-              if (updateResult['success'] == true) {
-                print('회원권 프로그램 매핑 클리어 완료: ${contract['contract_id']}');
-              } else {
-                print('회원권 프로그램 매핑 클리어 실패: ${contract['contract_id']} - ${updateResult['error']}');
-              }
-            } else {
-              print('회원권 프로그램 매핑 클리어 HTTP 오류: ${updateResponse.statusCode}');
-            }
-          }
-        } else {
-          print('해당 프로그램을 사용하는 회원권을 찾을 수 없습니다.');
+
+      print('프로그램 매핑을 클리어할 회원권 개수: ${contracts.length}');
+
+      if (contracts.isNotEmpty) {
+        // 각 회원권의 program_reservation_availability 필드를 null로 업데이트
+        for (var contract in contracts) {
+          await SupabaseAdapter.updateData(
+            table: 'v2_contracts',
+            data: {
+              'program_reservation_availability': null,
+            },
+            where: [
+              {'field': 'branch_id', 'operator': '=', 'value': branchId},
+              {'field': 'contract_id', 'operator': '=', 'value': contract['contract_id']},
+            ],
+          );
+
+          print('회원권 프로그램 매핑 클리어 완료: ${contract['contract_id']}');
         }
       } else {
-        print('회원권 조회 HTTP 오류: ${response.statusCode}');
+        print('해당 프로그램을 사용하는 회원권을 찾을 수 없습니다.');
       }
     } catch (e) {
       print('❌ 회원권 프로그램 매핑 클리어 오류: $e');

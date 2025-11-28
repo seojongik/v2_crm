@@ -2,10 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import 'dart:convert';
-import 'package:http/http.dart' as http;
 import '/services/holiday_service.dart';
 import '/services/api_service.dart';
 import '/services/tab_design_upper.dart';
+import '/services/supabase_adapter.dart';
 import 'tab9_manager_total_schedule.dart';
 import '../tab1_salary/tab9_manager_salary.dart';
 
@@ -180,34 +180,22 @@ class _Tab9ManagerHoursWidgetState extends State<Tab9ManagerHoursWidget> with Si
       }
 
       // 전체 권한인 경우 모든 매니저 조회
-      final response = await http.post(
-        Uri.parse('https://autofms.mycafe24.com/dynamic_api.php'),
-        headers: {
-          'Content-Type': 'application/json',
-          'Accept': 'application/json',
-        },
-        body: json.encode({
-          'operation': 'get',
-          'table': 'v2_staff_manager',
-          'where': [
-            {'field': 'branch_id', 'operator': '=', 'value': ApiService.getCurrentBranchId()},
-            {'field': 'staff_status', 'operator': '=', 'value': '재직'},
-            {'field': 'staff_type', 'operator': '=', 'value': '직원'},
-          ],
-          'orderBy': [
-            {'field': 'manager_name', 'direction': 'ASC'}
-          ],
-        }),
-      ).timeout(Duration(seconds: 15));
+      final data = await SupabaseAdapter.getData(
+        table: 'v2_staff_manager',
+        where: [
+          {'field': 'branch_id', 'operator': '=', 'value': ApiService.getCurrentBranchId()},
+          {'field': 'staff_status', 'operator': '=', 'value': '재직'},
+          {'field': 'staff_type', 'operator': '=', 'value': '직원'},
+        ],
+        orderBy: [
+          {'field': 'manager_name', 'direction': 'ASC'}
+        ],
+      );
 
-      if (response.statusCode == 200) {
-        final result = json.decode(response.body);
-        if (result['success'] == true) {
-          final List<dynamic> data = result['data'];
-          
-          // 중복 제거 로직
-          final Map<String, Map<String, dynamic>> uniqueManagerList = {};
-          for (var item in data) {
+      if (data.isNotEmpty) {
+        // 중복 제거 로직
+        final Map<String, Map<String, dynamic>> uniqueManagerList = {};
+        for (var item in data) {
             if (item is Map<String, dynamic>) {
               final managerId = item['manager_id'].toString();
               final currentRound = item['manager_contract_round'] ?? 0;
@@ -228,11 +216,6 @@ class _Tab9ManagerHoursWidgetState extends State<Tab9ManagerHoursWidget> with Si
             _managerList = newManagerList;
           });
           print('✅ 매니저 리스트 로드 완료: ${_managerList.length}개');
-        } else {
-          throw Exception('매니저 리스트 조회 실패: ${result['error'] ?? '알 수 없는 오류'}');
-        }
-      } else {
-        throw Exception('매니저 리스트 조회 HTTP 오류: ${response.statusCode}');
       }
     } catch (e) {
       print('❌ 매니저 리스트 로드 오류: $e');
@@ -440,110 +423,68 @@ class _Tab9ManagerHoursWidgetState extends State<Tab9ManagerHoursWidget> with Si
           final currentTime = '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')} ${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}:${now.second.toString().padLeft(2, '0')}';
           
           // 기존 데이터 확인 후 업데이트 또는 추가
-          final checkResponse = await http.post(
-            Uri.parse('https://autofms.mycafe24.com/dynamic_api.php'),
-            headers: {
-              'Content-Type': 'application/json',
-              'Accept': 'application/json',
-            },
-            body: json.encode({
-              'operation': 'get',
-              'table': 'v2_weekly_schedule_manager',
-              'where': [
-                {'field': 'branch_id', 'operator': '=', 'value': branchId},
-                {'field': 'manager_id', 'operator': '=', 'value': managerId},
-                {'field': 'day_of_week', 'operator': '=', 'value': dayOfWeek},
-              ],
-            }),
-          ).timeout(Duration(seconds: 15));
+          final whereConditions = [
+            {'field': 'branch_id', 'operator': '=', 'value': branchId},
+            {'field': 'manager_id', 'operator': '=', 'value': managerId},
+            {'field': 'day_of_week', 'operator': '=', 'value': dayOfWeek},
+          ];
 
-          if (checkResponse.statusCode == 200) {
-            final checkResult = json.decode(checkResponse.body);
-            
-            if (checkResult['success'] == true && checkResult['data'].isNotEmpty) {
-              // 기존 데이터가 있으면 업데이트
-              final updateData = {
-                'is_day_off': isDayOff,
-                'start_time': startTime,
-                'end_time': endTime,
-                'updated_at': currentTime,
-              };
-              
-              print('🔍 $dayOfWeek 업데이트 데이터: $updateData');
-              
-              final updateResponse = await http.post(
-                Uri.parse('https://autofms.mycafe24.com/dynamic_api.php'),
-                headers: {
-                  'Content-Type': 'application/json',
-                  'Accept': 'application/json',
-                },
-                body: json.encode({
-                  'operation': 'update',
-                  'table': 'v2_weekly_schedule_manager',
-                  'data': updateData,
-                  'where': [
-                    {'field': 'branch_id', 'operator': '=', 'value': branchId},
-                    {'field': 'manager_id', 'operator': '=', 'value': managerId},
-                    {'field': 'day_of_week', 'operator': '=', 'value': dayOfWeek},
-                  ],
-                }),
-              ).timeout(Duration(seconds: 15));
-              
-              if (updateResponse.statusCode != 200) {
-                throw Exception('$dayOfWeek 업데이트 실패: HTTP ${updateResponse.statusCode}');
-              }
-              
-              final updateResult = json.decode(updateResponse.body);
-              if (updateResult['success'] != true) {
-                print('❌ $dayOfWeek 업데이트 상세 오류: ${updateResponse.body}');
-                throw Exception('$dayOfWeek 업데이트 실패: ${updateResult['error'] ?? '알 수 없는 오류'}');
-              }
-              
-              print('✅ $dayOfWeek 업데이트 성공');
-              
-            } else {
-              // 기존 데이터가 없으면 새로 추가
-              final insertData = {
-                'branch_id': branchId,
-                'manager_id': managerId,
-                'manager_name': managerName,
-                'day_of_week': dayOfWeek,
-                'is_day_off': isDayOff,
-                'start_time': startTime,
-                'end_time': endTime,
-                'updated_at': currentTime,
-              };
-              
-              print('🔍 $dayOfWeek 추가 데이터: $insertData');
-              
-              final insertResponse = await http.post(
-                Uri.parse('https://autofms.mycafe24.com/dynamic_api.php'),
-                headers: {
-                  'Content-Type': 'application/json',
-                  'Accept': 'application/json',
-                },
-                body: json.encode({
-                  'operation': 'add',
-                  'table': 'v2_weekly_schedule_manager',
-                  'data': insertData,
-                }),
-              ).timeout(Duration(seconds: 15));
-              
-              print('🔍 $dayOfWeek 추가 응답 상태: ${insertResponse.statusCode}');
-              print('🔍 $dayOfWeek 추가 응답 본문: ${insertResponse.body}');
-              
-              if (insertResponse.statusCode != 200) {
-                throw Exception('$dayOfWeek 추가 실패: HTTP ${insertResponse.statusCode} - ${insertResponse.body}');
-              }
-              
-              final insertResult = json.decode(insertResponse.body);
-              if (insertResult['success'] != true) {
-                print('❌ $dayOfWeek 추가 상세 오류: ${insertResponse.body}');
-                throw Exception('$dayOfWeek 추가 실패: ${insertResult['error'] ?? '알 수 없는 오류'}');
-              }
-              
-              print('✅ $dayOfWeek 추가 성공');
+          final checkResponse = await SupabaseAdapter.getData(
+            table: 'v2_weekly_schedule_manager',
+            where: whereConditions,
+          );
+
+          print('🔍 $dayOfWeek 기존 데이터 확인: ${checkResponse.length}건');
+
+          Map<String, dynamic> result;
+          if (checkResponse.isNotEmpty) {
+            // 기존 데이터가 있으면 업데이트
+            final updateData = {
+              'is_day_off': isDayOff,
+              'start_time': startTime,
+              'end_time': endTime,
+              'updated_at': currentTime,
+            };
+
+            print('🔍 $dayOfWeek 업데이트 데이터: $updateData');
+
+            result = await SupabaseAdapter.updateData(
+              table: 'v2_weekly_schedule_manager',
+              data: updateData,
+              where: whereConditions,
+            );
+
+            if (result['success'] != true) {
+              throw Exception('$dayOfWeek 업데이트 실패: ${result['message'] ?? '알 수 없는 오류'}');
             }
+
+            print('✅ $dayOfWeek 업데이트 성공');
+
+          } else {
+            // 기존 데이터가 없으면 새로 추가
+            final insertData = {
+              'branch_id': branchId,
+              'manager_id': managerId,
+              'manager_name': managerName,
+              'day_of_week': dayOfWeek,
+              'is_day_off': isDayOff,
+              'start_time': startTime,
+              'end_time': endTime,
+              'updated_at': currentTime,
+            };
+
+            print('🔍 $dayOfWeek 추가 데이터: $insertData');
+
+            result = await SupabaseAdapter.addData(
+              table: 'v2_weekly_schedule_manager',
+              data: insertData,
+            );
+
+            if (result['success'] != true) {
+              throw Exception('$dayOfWeek 추가 실패: ${result['message'] ?? '알 수 없는 오류'}');
+            }
+
+            print('✅ $dayOfWeek 추가 성공');
           }
         } catch (e) {
           print('❌ ${weekdayKorean[weekdayIndex]} 처리 중 오류: $e');
@@ -570,28 +511,28 @@ class _Tab9ManagerHoursWidgetState extends State<Tab9ManagerHoursWidget> with Si
     }
   }
 
-  // 월별 스케줄을 v2_schedule_adjusted_pro에 저장
+  // 월별 스케줄을 v2_schedule_adjusted_manager에 저장
   Future<void> _saveMonthlySchedule(String branchId, String managerId, String managerName) async {
     try {
       print('📅 월별 스케줄 저장 시작 - ${_selectedDay.year}년 ${_selectedDay.month}월');
-      
+
       // 선택된 월의 첫날과 마지막날 계산
       final firstDay = DateTime(_selectedDay.year, _selectedDay.month, 1);
       final lastDay = DateTime(_selectedDay.year, _selectedDay.month + 1, 0);
-      
+
       final weekdayKorean = ['일', '월', '화', '수', '목', '금', '토'];
       final now = DateTime.now();
       final currentTime = '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')} ${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}:${now.second.toString().padLeft(2, '0')}';
-      
+
       // 해당 월의 모든 날짜에 대해 처리
       for (int day = 1; day <= lastDay.day; day++) {
         final currentDate = DateTime(_selectedDay.year, _selectedDay.month, day);
         final dateString = '${currentDate.year}-${currentDate.month.toString().padLeft(2, '0')}-${currentDate.day.toString().padLeft(2, '0')}';
         final weekdayIndex = currentDate.weekday % 7; // 일요일=0, 월요일=1, ..., 토요일=6
-        
+
         // 해당 요일의 기본 스케줄 가져오기
         final daySchedule = _managerWeeklyHours[_selectedMode]![weekdayIndex]!;
-        
+
         // 휴무 여부에 따른 시간 설정
         String workStart, workEnd, isDayOff;
         if (daySchedule['isClosed']) {
@@ -603,123 +544,79 @@ class _Tab9ManagerHoursWidgetState extends State<Tab9ManagerHoursWidget> with Si
           workEnd = '${daySchedule['endTime']}:00';
           isDayOff = '출근';
         }
-        
+
         print('🔍 $dateString 처리 중 - 요일: ${weekdayIndex}, isDayOff: $isDayOff, workStart: $workStart, workEnd: $workEnd');
-        
+
+        final whereConditions = [
+          {'field': 'branch_id', 'operator': '=', 'value': branchId},
+          {'field': 'manager_id', 'operator': '=', 'value': managerId},
+          {'field': 'scheduled_date', 'operator': '=', 'value': dateString},
+        ];
+
         // 기존 데이터 확인
-        final checkResponse = await http.post(
-          Uri.parse('https://autofms.mycafe24.com/dynamic_api.php'),
-          headers: {
-            'Content-Type': 'application/json',
-            'Accept': 'application/json',
-          },
-          body: json.encode({
-            'operation': 'get',
-            'table': 'v2_schedule_adjusted_manager',
-            'where': [
-              {'field': 'branch_id', 'operator': '=', 'value': branchId},
-              {'field': 'manager_id', 'operator': '=', 'value': managerId},
-              {'field': 'scheduled_date', 'operator': '=', 'value': dateString},
-            ],
-          }),
-        ).timeout(Duration(seconds: 15));
+        final checkResponse = await SupabaseAdapter.getData(
+          table: 'v2_schedule_adjusted_manager',
+          where: whereConditions,
+        );
 
-        print('🔍 $dateString 기존 데이터 확인 응답: ${checkResponse.statusCode}');
-        print('🔍 $dateString 기존 데이터 확인 본문: ${checkResponse.body}');
+        print('🔍 $dateString 기존 데이터 확인: ${checkResponse.length}건');
 
-        if (checkResponse.statusCode == 200) {
-          final checkResult = json.decode(checkResponse.body);
-          
-          if (checkResult['success'] == true && checkResult['data'].isNotEmpty) {
-            // 기존 데이터가 있으면 업데이트
-            final updateData = {
-              'work_start': workStart,
-              'work_end': workEnd,
-              'is_day_off': isDayOff,
-              'updated_at': currentTime,
-              'is_manually_set': '자동',
-            };
-            
-            print('🔍 $dateString 업데이트 데이터: $updateData');
-            
-            final updateResponse = await http.post(
-              Uri.parse('https://autofms.mycafe24.com/dynamic_api.php'),
-              headers: {
-                'Content-Type': 'application/json',
-                'Accept': 'application/json',
-              },
-              body: json.encode({
-                'operation': 'update',
-                'table': 'v2_schedule_adjusted_manager',
-                'data': updateData,
-                'where': [
-                  {'field': 'branch_id', 'operator': '=', 'value': branchId},
-                  {'field': 'manager_id', 'operator': '=', 'value': managerId},
-                  {'field': 'scheduled_date', 'operator': '=', 'value': dateString},
-                ],
-              }),
-            ).timeout(Duration(seconds: 15));
-            
-            print('🔍 $dateString 업데이트 응답 상태: ${updateResponse.statusCode}');
-            print('🔍 $dateString 업데이트 응답 본문: ${updateResponse.body}');
-            
-            if (updateResponse.statusCode == 200) {
-              final updateResult = json.decode(updateResponse.body);
-              if (updateResult['success'] == true) {
-                print('✅ $dateString 스케줄 업데이트 성공');
-              } else {
-                print('❌ $dateString 스케줄 업데이트 실패: ${updateResult['error']}');
-              }
-            }
-            
+        Map<String, dynamic> result;
+        if (checkResponse.isNotEmpty) {
+          // 기존 데이터가 있으면 업데이트
+          final updateData = {
+            'work_start': workStart,
+            'work_end': workEnd,
+            'is_day_off': isDayOff,
+            'updated_at': currentTime,
+            'is_manually_set': '자동',
+          };
+
+          print('🔍 $dateString 업데이트 데이터: $updateData');
+
+          result = await SupabaseAdapter.updateData(
+            table: 'v2_schedule_adjusted_manager',
+            data: updateData,
+            where: whereConditions,
+          );
+
+          if (result['success'] == true) {
+            print('✅ $dateString 스케줄 업데이트 성공');
           } else {
-            // 기존 데이터가 없으면 새로 추가
-            final insertData = {
-              'branch_id': branchId,
-              'manager_id': managerId,
-              'manager_name': managerName,
-              'scheduled_date': dateString,
-              'work_start': workStart,
-              'work_end': workEnd,
-              'is_day_off': isDayOff,
-              'updated_at': currentTime,
-              'is_manually_set': '자동',
-            };
-            
-            print('🔍 $dateString 추가 데이터: $insertData');
-            
-            final insertResponse = await http.post(
-              Uri.parse('https://autofms.mycafe24.com/dynamic_api.php'),
-              headers: {
-                'Content-Type': 'application/json',
-                'Accept': 'application/json',
-              },
-              body: json.encode({
-                'operation': 'add',
-                'table': 'v2_schedule_adjusted_manager',
-                'data': insertData,
-              }),
-            ).timeout(Duration(seconds: 15));
-            
-            print('🔍 $dateString 추가 응답 상태: ${insertResponse.statusCode}');
-            print('🔍 $dateString 추가 응답 본문: ${insertResponse.body}');
-            
-            if (insertResponse.statusCode == 200) {
-              final insertResult = json.decode(insertResponse.body);
-              if (insertResult['success'] == true) {
-                print('✅ $dateString 스케줄 추가 성공');
-              } else {
-                print('❌ $dateString 스케줄 추가 실패: ${insertResult['error']}');
-              }
-            }
+            print('❌ $dateString 스케줄 업데이트 실패: ${result['message']}');
           }
+
         } else {
-          print('❌ $dateString 기존 데이터 확인 실패: HTTP ${checkResponse.statusCode}');
+          // 기존 데이터가 없으면 새로 추가
+          final insertData = {
+            'branch_id': branchId,
+            'manager_id': managerId,
+            'manager_name': managerName,
+            'scheduled_date': dateString,
+            'work_start': workStart,
+            'work_end': workEnd,
+            'is_day_off': isDayOff,
+            'updated_at': currentTime,
+            'is_manually_set': '자동',
+          };
+
+          print('🔍 $dateString 추가 데이터: $insertData');
+
+          result = await SupabaseAdapter.addData(
+            table: 'v2_schedule_adjusted_manager',
+            data: insertData,
+          );
+
+          if (result['success'] == true) {
+            print('✅ $dateString 스케줄 추가 성공');
+          } else {
+            print('❌ $dateString 스케줄 추가 실패: ${result['message']}');
+          }
         }
       }
-      
+
       print('✅ 월별 스케줄 저장 완료 - ${lastDay.day}일 처리됨');
-      
+
     } catch (e) {
       print('❌ 월별 스케줄 저장 실패: $e');
       // 월별 스케줄 저장 실패해도 전체 프로세스는 성공으로 처리
@@ -729,59 +626,48 @@ class _Tab9ManagerHoursWidgetState extends State<Tab9ManagerHoursWidget> with Si
   // 프로별 근무시간 로드
   Future<void> _loadManagerSchedule(String managerName) async {
     if (_selectedManagerData == null) return;
-    
+
     try {
       final branchId = ApiService.getCurrentBranchId();
       final managerId = _selectedManagerData!['manager_id'];
-      
-      final response = await http.post(
-        Uri.parse('https://autofms.mycafe24.com/dynamic_api.php'),
-        headers: {
-          'Content-Type': 'application/json',
-          'Accept': 'application/json',
-        },
-        body: json.encode({
-          'operation': 'get',
-          'table': 'v2_weekly_schedule_manager',
-          'where': [
-            {'field': 'branch_id', 'operator': '=', 'value': branchId},
-            {'field': 'manager_id', 'operator': '=', 'value': managerId},
-          ],
-        }),
-      ).timeout(Duration(seconds: 15));
 
-      // 프로별 운영시간 데이터 초기화
+      final response = await SupabaseAdapter.getData(
+        table: 'v2_weekly_schedule_manager',
+        where: [
+          {'field': 'branch_id', 'operator': '=', 'value': branchId},
+          {'field': 'manager_id', 'operator': '=', 'value': managerId},
+        ],
+      );
+
+      print('🔍 $managerName 근무시간 조회 결과: ${response.length}건');
+
       _managerWeeklyHours[managerName] = {};
 
-      if (response.statusCode == 200) {
-        final result = json.decode(response.body);
-        if (result['success'] == true && result['data'].isNotEmpty) {
-          // 데이터베이스에서 불러온 데이터로 설정
-          final scheduleData = result['data'] as List;
-          final weekdayKorean = ['일', '월', '화', '수', '목', '금', '토'];
-          
-          // 데이터베이스 값으로 설정
-          for (var schedule in scheduleData) {
-            final dayOfWeek = schedule['day_of_week'];
-            final weekdayIndex = weekdayKorean.indexOf(dayOfWeek);
-            
-            if (weekdayIndex >= 0) {
-              final isDayOff = schedule['is_day_off'] == '휴무';
-              final startTime = _formatTime(schedule['start_time'] ?? '07:00:00');
-              final endTime = _formatTime(schedule['end_time'] ?? '23:00:00');
-              
-              _managerWeeklyHours[managerName]![weekdayIndex] = {
-                'startTime': startTime,
-                'endTime': endTime,
-                'isClosed': isDayOff,
-              };
-            }
+      if (response.isNotEmpty) {
+        // 데이터베이스에서 불러온 데이터로 설정
+        final weekdayKorean = ['일', '월', '화', '수', '목', '금', '토'];
+
+        // 데이터베이스 값으로 설정
+        for (var schedule in response) {
+          final dayOfWeek = schedule['day_of_week'];
+          final weekdayIndex = weekdayKorean.indexOf(dayOfWeek);
+
+          if (weekdayIndex >= 0) {
+            final isDayOff = schedule['is_day_off'] == '휴무';
+            final startTime = _formatTime(schedule['start_time'] ?? '07:00:00');
+            final endTime = _formatTime(schedule['end_time'] ?? '23:00:00');
+
+            _managerWeeklyHours[managerName]![weekdayIndex] = {
+              'startTime': startTime,
+              'endTime': endTime,
+              'isClosed': isDayOff,
+            };
           }
-          
-          print('✅ $managerName 근무시간 로드 완료');
-        } else {
-          print('ℹ️ $managerName 근무시간 데이터 없음');
         }
+
+        print('✅ $managerName 근무시간 로드 완료');
+      } else {
+        print('ℹ️ $managerName 근무시간 데이터 없음');
       }
     } catch (e) {
       print('❌ $managerName 근무시간 로드 실패: $e');
@@ -807,54 +693,41 @@ class _Tab9ManagerHoursWidgetState extends State<Tab9ManagerHoursWidget> with Si
       
       print('📅 월별 스케줄 조회 - ${_selectedDay.year}년 ${_selectedDay.month}월 ($firstDateStr ~ $lastDateStr)');
       
-      final response = await http.post(
-        Uri.parse('https://autofms.mycafe24.com/dynamic_api.php'),
-        headers: {
-          'Content-Type': 'application/json',
-          'Accept': 'application/json',
-        },
-        body: json.encode({
-          'operation': 'get',
-          'table': 'v2_schedule_adjusted_manager',
-          'where': [
+      final response = await SupabaseAdapter.getData(
+        table: 'v2_schedule_adjusted_manager',
+        where: [
             {'field': 'branch_id', 'operator': '=', 'value': branchId},
             {'field': 'manager_id', 'operator': '=', 'value': managerId},
             {'field': 'scheduled_date', 'operator': '>=', 'value': firstDateStr},
             {'field': 'scheduled_date', 'operator': '<=', 'value': lastDateStr},
           ],
-          'orderBy': [
-            {'field': 'scheduled_date', 'direction': 'ASC'}
-          ],
-        }),
-      ).timeout(Duration(seconds: 15));
+        orderBy: [
+          {'field': 'scheduled_date', 'direction': 'ASC'}
+        ],
+      );
 
-      if (response.statusCode == 200) {
-        final result = json.decode(response.body);
-        if (result['success'] == true) {
-          final scheduleData = result['data'] as List;
-          
-          // 기존 월별 스케줄 데이터 초기화
-          _monthlySchedule.clear();
-          
-          // 조회된 데이터를 맵에 저장
-          for (var schedule in scheduleData) {
-            final dateStr = schedule['scheduled_date'];
-            final isDayOff = schedule['is_day_off'] == '휴무';
-            final workStart = _formatTime(schedule['work_start'] ?? '07:00:00');
-            final workEnd = _formatTime(schedule['work_end'] ?? '23:00:00');
-            
-            _monthlySchedule[dateStr] = {
-              'isClosed': isDayOff,
-              'startTime': workStart,
-              'endTime': workEnd,
-            };
-          }
-          
-          print('✅ 월별 스케줄 로드 완료 - ${scheduleData.length}개 날짜');
-        } else {
-          print('ℹ️ 월별 스케줄 데이터 없음');
-          _monthlySchedule.clear();
+      if (response.isNotEmpty) {
+        // 기존 월별 스케줄 데이터 초기화
+        _monthlySchedule.clear();
+
+        // 조회된 데이터를 맵에 저장
+        for (var schedule in response) {
+          final dateStr = schedule['scheduled_date'];
+          final isDayOff = schedule['is_day_off'] == '휴무';
+          final workStart = _formatTime(schedule['work_start'] ?? '07:00:00');
+          final workEnd = _formatTime(schedule['work_end'] ?? '23:00:00');
+
+          _monthlySchedule[dateStr] = {
+            'isClosed': isDayOff,
+            'startTime': workStart,
+            'endTime': workEnd,
+          };
         }
+
+        print('✅ 월별 스케줄 로드 완료 - ${response.length}개 날짜');
+      } else {
+        print('ℹ️ 월별 스케줄 데이터 없음');
+        _monthlySchedule.clear();
       }
     } catch (e) {
       print('❌ 월별 스케줄 로드 실패: $e');
@@ -1923,10 +1796,10 @@ class _Tab9ManagerHoursWidgetState extends State<Tab9ManagerHoursWidget> with Si
       final dateString = DateFormat('yyyy-MM-dd').format(date);
       final now = DateTime.now();
       final currentTime = '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')} ${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}:${now.second.toString().padLeft(2, '0')}';
-      
+
       // 프로 ID를 올바르게 가져오기
       final managerId = _selectedManagerData!['manager_id']?.toString() ?? _selectedManagerData!['staff_id']?.toString() ?? '';
-      
+
       // 업데이트할 데이터 준비
       final updateData = {
         'branch_id': branchId,
@@ -1942,107 +1815,66 @@ class _Tab9ManagerHoursWidgetState extends State<Tab9ManagerHoursWidget> with Si
 
       print('날짜별 스케줄 업데이트 데이터: $updateData');
 
+      final whereConditions = [
+        {'field': 'branch_id', 'operator': '=', 'value': branchId},
+        {'field': 'manager_id', 'operator': '=', 'value': managerId},
+        {'field': 'scheduled_date', 'operator': '=', 'value': dateString},
+      ];
+
       // 기존 데이터 확인 후 업데이트 또는 추가
-      final checkResponse = await http.post(
-        Uri.parse('$baseUrl/dynamic_api.php'),
-        headers: {
-          'Content-Type': 'application/json',
-          'Accept': 'application/json',
-        },
-        body: json.encode({
-          'operation': 'get',
-          'table': 'v2_schedule_adjusted_manager',
-          'where': [
-            {'field': 'branch_id', 'operator': '=', 'value': branchId},
-            {'field': 'manager_id', 'operator': '=', 'value': managerId},
-            {'field': 'scheduled_date', 'operator': '=', 'value': dateString},
-          ],
-        }),
-      ).timeout(Duration(seconds: 15));
+      final checkResponse = await SupabaseAdapter.getData(
+        table: 'v2_schedule_adjusted_manager',
+        where: whereConditions,
+      );
 
-      if (checkResponse.statusCode == 200) {
-        final checkResult = json.decode(checkResponse.body);
-        
-        if (checkResult['success'] == true && checkResult['data'].isNotEmpty) {
-          // 기존 데이터가 있으면 업데이트
-          final response = await http.post(
-            Uri.parse('$baseUrl/dynamic_api.php'),
-            headers: {
-              'Content-Type': 'application/json',
-              'Accept': 'application/json',
-            },
-            body: json.encode({
-              'operation': 'update',
-              'table': 'v2_schedule_adjusted_manager',
-              'data': updateData,
-              'where': [
-                {'field': 'branch_id', 'operator': '=', 'value': branchId},
-                {'field': 'manager_id', 'operator': '=', 'value': managerId},
-                {'field': 'scheduled_date', 'operator': '=', 'value': dateString},
-              ],
-            }),
-          ).timeout(Duration(seconds: 15));
+      print('🔍 기존 데이터 확인: ${checkResponse.length}건');
 
-          print('날짜별 스케줄 업데이트 응답: ${response.statusCode}');
-          print('날짜별 스케줄 업데이트 응답 내용: ${response.body}');
+      Map<String, dynamic> result;
+      if (checkResponse.isNotEmpty) {
+        // 기존 데이터가 있으면 업데이트
+        result = await SupabaseAdapter.updateData(
+          table: 'v2_schedule_adjusted_manager',
+          data: updateData,
+          where: whereConditions,
+        );
 
-          if (response.statusCode == 200) {
-            final responseData = json.decode(response.body);
-            if (responseData['success'] == true) {
-              // 로컬 데이터 업데이트
-              setState(() {
-                _monthlySchedule[dateString] = {
-                  'startTime': scheduleData['startTime'],
-                  'endTime': scheduleData['endTime'],
-                  'isClosed': scheduleData['isClosed'],
-                  'isManuallySet': true,
-                };
-              });
+        if (result['success'] == true) {
+          // 로컬 데이터 업데이트
+          setState(() {
+            _monthlySchedule[dateString] = {
+              'startTime': scheduleData['startTime'],
+              'endTime': scheduleData['endTime'],
+              'isClosed': scheduleData['isClosed'],
+              'isManuallySet': true,
+            };
+          });
 
-              _showSuccessSnackBar('${DateFormat('M월 d일').format(date)} 스케줄이 수정되었습니다');
-            } else {
-              _showErrorSnackBar('스케줄 수정에 실패했습니다: ${responseData['error'] ?? '알 수 없는 오류'}');
-            }
-          }
+          _showSuccessSnackBar('${DateFormat('M월 d일').format(date)} 스케줄이 수정되었습니다');
         } else {
-          // 기존 데이터가 없으면 새로 추가
-          final response = await http.post(
-            Uri.parse('$baseUrl/dynamic_api.php'),
-            headers: {
-              'Content-Type': 'application/json',
-              'Accept': 'application/json',
-            },
-            body: json.encode({
-              'operation': 'add',
-              'table': 'v2_schedule_adjusted_manager',
-              'data': updateData,
-            }),
-          ).timeout(Duration(seconds: 15));
-
-          print('날짜별 스케줄 추가 응답: ${response.statusCode}');
-          print('날짜별 스케줄 추가 응답 내용: ${response.body}');
-
-          if (response.statusCode == 200) {
-            final responseData = json.decode(response.body);
-            if (responseData['success'] == true) {
-              // 로컬 데이터 업데이트
-              setState(() {
-                _monthlySchedule[dateString] = {
-                  'startTime': scheduleData['startTime'],
-                  'endTime': scheduleData['endTime'],
-                  'isClosed': scheduleData['isClosed'],
-                  'isManuallySet': true,
-                };
-              });
-
-              _showSuccessSnackBar('${DateFormat('M월 d일').format(date)} 스케줄이 추가되었습니다');
-            } else {
-              _showErrorSnackBar('스케줄 추가에 실패했습니다: ${responseData['error'] ?? '알 수 없는 오류'}');
-            }
-          }
+          _showErrorSnackBar('스케줄 수정에 실패했습니다: ${result['message'] ?? '알 수 없는 오류'}');
         }
       } else {
-        _showErrorSnackBar('기존 데이터 확인 중 오류가 발생했습니다');
+        // 기존 데이터가 없으면 새로 추가
+        result = await SupabaseAdapter.addData(
+          table: 'v2_schedule_adjusted_manager',
+          data: updateData,
+        );
+
+        if (result['success'] == true) {
+          // 로컬 데이터 업데이트
+          setState(() {
+            _monthlySchedule[dateString] = {
+              'startTime': scheduleData['startTime'],
+              'endTime': scheduleData['endTime'],
+              'isClosed': scheduleData['isClosed'],
+              'isManuallySet': true,
+            };
+          });
+
+          _showSuccessSnackBar('${DateFormat('M월 d일').format(date)} 스케줄이 추가되었습니다');
+        } else {
+          _showErrorSnackBar('스케줄 추가에 실패했습니다: ${result['message'] ?? '알 수 없는 오류'}');
+        }
       }
     } catch (e) {
       print('날짜별 스케줄 업데이트 오류: $e');

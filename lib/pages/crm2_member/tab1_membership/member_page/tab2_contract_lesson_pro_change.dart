@@ -221,7 +221,7 @@ class _LessonProChangeDialogState extends State<LessonProChangeDialog> {
 
       print('계약 업데이트 응답: $contractUpdateResponse');
 
-      if (contractUpdateResponse['affectedRows'] > 0) {
+      if (contractUpdateResponse['success'] == true) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('담당 프로가 ${currentProName}에서 ${newProName}으로 변경되었습니다.'),
@@ -235,7 +235,7 @@ class _LessonProChangeDialogState extends State<LessonProChangeDialog> {
 
         Navigator.of(context).pop();
       } else {
-        throw Exception('계약 정보 업데이트에 실패했습니다. affectedRows: ${contractUpdateResponse['affectedRows']}');
+        throw Exception('계약 정보 업데이트에 실패했습니다: ${contractUpdateResponse['message']}');
       }
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(

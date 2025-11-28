@@ -1037,7 +1037,6 @@ class _Tab1MemoTabWidgetState extends State<Tab1MemoTabWidget> {
                                       title: titleController.text.trim(),
                                       content: contentController.text.trim(),
                                       boardType: selectedBoardType,
-                                      staffId: 1, // TODO: 실제 로그인한 직원 ID 사용
                                     );
                                     
                                     Navigator.of(context).pop();

@@ -1533,12 +1533,10 @@ class _ContractRegistrationModalState extends State<ContractRegistrationModal>
                         'LS_contract_id': null, // v2_LS_contracts를 사용하지 않으므로 null
                         'contract_history_id': contractHistoryId,
                         'LS_id': null,
-                        'LS_contract_pro': null,
                         'LS_balance_min_before': 0,
                         'LS_net_min': lsNetMin,
                         'LS_balance_min_after': lsNetMin,
                         'LS_counting_source': 'v3_contract_history',
-                        'LS_set_id': null,
                         'LS_expiry_date': DateFormat('yyyy-MM-dd').format(contractEndDate),
                         'pro_id': proIdToSave,
                         'pro_name': proNameToSave,

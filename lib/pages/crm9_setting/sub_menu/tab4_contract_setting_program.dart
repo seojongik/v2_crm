@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
 import '../../../services/api_service.dart';
+import '/services/supabase_adapter.dart';
 
 // 타임라인 세션 데이터 클래스
 class TimelineSession {
@@ -90,46 +91,32 @@ class _ContractProgramDialogState extends State<ContractProgramDialog> {
         throw Exception('지점 정보가 없습니다.');
       }
 
-      final response = await http.post(
-        Uri.parse('https://autofms.mycafe24.com/dynamic_api.php'),
-        headers: {
-          'Content-Type': 'application/json',
-          'Accept': 'application/json',
-        },
-        body: json.encode({
-          'operation': 'get',
-          'table': 'v2_base_option_setting',
-          'fields': ['option_value'],
-          'where': [
-            {'field': 'branch_id', 'operator': '=', 'value': branchId},
-            {'field': 'category', 'operator': '=', 'value': '특수타석예약'},
-            {'field': 'field_name', 'operator': '=', 'value': 'program_id'},
-          ],
-        }),
-      ).timeout(Duration(seconds: 15));
+      final data = await SupabaseAdapter.getData(
+        table: 'v2_base_option_setting',
+        fields: ['option_value'],
+        where: [
+          {'field': 'branch_id', 'operator': '=', 'value': branchId},
+          {'field': 'category', 'operator': '=', 'value': '특수타석예약'},
+          {'field': 'field_name', 'operator': '=', 'value': 'program_id'},
+        ],
+      );
 
-      if (response.statusCode == 200) {
-        final result = json.decode(response.body);
-        if (result['success'] == true) {
-          final data = result['data'] as List;
-          final existingIds = data.map((item) => item['option_value'].toString()).toList();
-          
-          // 기존 ID에서 숫자 부분 추출하여 최대값 찾기
-          int maxNumber = 0;
-          for (String id in existingIds) {
-            if (id.startsWith('${branchId}_')) {
-              final numberPart = id.substring('${branchId}_'.length);
-              final number = int.tryParse(numberPart) ?? 0;
-              if (number > maxNumber) {
-                maxNumber = number;
-              }
-            }
+      final existingIds = data.map((item) => item['option_value'].toString()).toList();
+
+      // 기존 ID에서 숫자 부분 추출하여 최대값 찾기
+      int maxNumber = 0;
+      for (String id in existingIds) {
+        if (id.startsWith('${branchId}_')) {
+          final numberPart = id.substring('${branchId}_'.length);
+          final number = int.tryParse(numberPart) ?? 0;
+          if (number > maxNumber) {
+            maxNumber = number;
           }
-          
-          // 다음 번호로 새 ID 생성
-          return '${branchId}_${(maxNumber + 1).toString().padLeft(3, '0')}';
         }
       }
+
+      // 다음 번호로 새 ID 생성
+      return '${branchId}_${(maxNumber + 1).toString().padLeft(3, '0')}';
       
       // 첫 번째 프로그램인 경우
       return '${branchId}_001';
@@ -327,27 +314,10 @@ class _ContractProgramDialogState extends State<ContractProgramDialog> {
     
     // 각 설정 저장
     for (var setting in newSettings) {
-      final response = await http.post(
-        Uri.parse('https://autofms.mycafe24.com/dynamic_api.php'),
-        headers: {
-          'Content-Type': 'application/json',
-          'Accept': 'application/json',
-        },
-        body: json.encode({
-          'operation': 'add',
-          'table': 'v2_base_option_setting',
-          'data': setting,
-        }),
+      await SupabaseAdapter.addData(
+        table: 'v2_base_option_setting',
+        data: setting,
       );
-      
-      if (response.statusCode != 200) {
-        throw Exception('설정 저장 HTTP 오류: ${response.statusCode}');
-      }
-      
-      final result = json.decode(response.body);
-      if (result['success'] != true) {
-        throw Exception('설정 저장 실패: ${result['error'] ?? '알 수 없는 오류'}');
-      }
     }
     
     _showSuccessSnackBar('프로그램이 등록되었습니다.');

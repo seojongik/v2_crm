@@ -530,13 +530,16 @@ class _Tab7TermWidgetState extends State<Tab7TermWidget> {
       final contractHistoryId = contract['contract_history_id'];
       
       // 1. v2_bill_term_hold 테이블에 홀드 정보 추가
+      final currentUser = ApiService.getCurrentUser();
+      final staffId = currentUser?['manager_contract_id'] ?? currentUser?['pro_contract_id'] ?? 1;
+
       final holdData = {
         'contract_history_id': contractHistoryId,
         'term_hold_start': DateFormat('yyyy-MM-dd').format(holdStart),
         'term_hold_end': DateFormat('yyyy-MM-dd').format(holdEnd),
         'term_hold_reason': reason,
         'term_add_dates': addDays,
-        'staff_id': 1, // 임시로 1 설정
+        'staff_id': staffId,
         'term_hold_timestamp': DateTime.now().toIso8601String(),
       };
 

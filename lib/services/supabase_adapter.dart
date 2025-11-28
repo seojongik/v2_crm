@@ -161,8 +161,8 @@ class SupabaseAdapter {
     required Map<String, dynamic> data,
   }) async {
     try {
-      // PostgreSQL은 테이블/컬럼 이름을 소문자로 저장함
-      final tableName = table.toLowerCase();
+      // 테이블명 매핑 (legacy → v2) + 소문자 변환
+      final tableName = _mapTableName(table).toLowerCase();
       
       // 데이터 변환 (앱 형식 → PostgreSQL)
       final convertedData = _convertInputData(data);
@@ -243,8 +243,8 @@ class SupabaseAdapter {
     required List<Map<String, dynamic>> where,
   }) async {
     try {
-      // PostgreSQL은 테이블/컬럼 이름을 소문자로 저장함
-      final tableName = table.toLowerCase();
+      // 테이블명 매핑 (legacy → v2) + 소문자 변환
+      final tableName = _mapTableName(table).toLowerCase();
       
       if (where.isEmpty) {
         throw Exception('업데이트 조건이 지정되지 않았습니다.');
@@ -290,8 +290,8 @@ class SupabaseAdapter {
     required List<Map<String, dynamic>> where,
   }) async {
     try {
-      // PostgreSQL은 테이블/컬럼 이름을 소문자로 저장함
-      final tableName = table.toLowerCase();
+      // 테이블명 매핑 (legacy → v2) + 소문자 변환
+      final tableName = _mapTableName(table).toLowerCase();
       
       if (where.isEmpty) {
         throw Exception('삭제 조건이 지정되지 않았습니다.');

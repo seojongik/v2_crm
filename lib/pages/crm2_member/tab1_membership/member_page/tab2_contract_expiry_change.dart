@@ -243,22 +243,22 @@ class _ExpiryChangeDialogState extends State<ExpiryChangeDialog> {
       );
 
       print('업데이트 응답: $response');
-      
-      if (response['affectedRows'] > 0) {
+
+      if (response['success'] == true) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text('유효기간이 성공적으로 변경되었습니다.'),
             backgroundColor: Colors.green,
           ),
         );
-        
+
         if (widget.onSaved != null) {
           widget.onSaved!();
         }
-        
+
         Navigator.of(context).pop();
       } else {
-        throw Exception('유효기간 변경에 실패했습니다. affectedRows: ${response['affectedRows']}');
+        throw Exception('유효기간 변경에 실패했습니다: ${response['message']}');
       }
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
