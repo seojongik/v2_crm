@@ -29,7 +29,7 @@ class LockerApiService {
     }
     
     print('🔍 [LockerApiService] v2_Locker_status 테이블 조회 중...');
-    final result = await ApiService.getData(
+    final result = await ApiService.getDataList(
       table: 'v2_Locker_status',
       where: whereConditions.isNotEmpty ? whereConditions : null,
       orderBy: orderBy ?? [{'field': 'locker_id', 'direction': 'ASC'}],
@@ -82,7 +82,7 @@ class LockerApiService {
     // 1. v2_Locker_bill에서 해당 월과 겹치는 배정 이력 조회
     print('🔍 [LockerApiService] v2_Locker_bill에서 해당 월 배정이력 조회 중...');
     
-    final billResult = await ApiService.getData(
+    final billResult = await ApiService.getDataList(
       table: 'v2_Locker_bill',
       where: whereConditions,
       orderBy: [{'field': 'locker_id', 'direction': 'ASC'}, {'field': 'locker_bill_start', 'direction': 'ASC'}],
@@ -106,7 +106,7 @@ class LockerApiService {
           // 겹치는 기간이 있으면 포함
           
           // v2_Locker_status에서 현재 락커 상태 정보를 가져와서 병합
-          final lockerStatus = await ApiService.getData(
+          final lockerStatus = await ApiService.getDataList(
             table: 'v2_Locker_status',
             where: [
               {'field': 'locker_id', 'operator': '=', 'value': bill['locker_id']},
@@ -149,7 +149,7 @@ class LockerApiService {
     statusWhereConditions.add({'field': 'member_id', 'operator': 'IS NOT', 'value': null});
     statusWhereConditions.add({'field': 'payment_frequency', 'operator': '=', 'value': '정기결제(월별)'});
     
-    final statusResult = await ApiService.getData(
+    final statusResult = await ApiService.getDataList(
       table: 'v2_Locker_status',
       where: statusWhereConditions,
       orderBy: [{'field': 'locker_id', 'direction': 'ASC'}],
@@ -239,7 +239,7 @@ class LockerApiService {
     
     print('🔍 [LockerApiService] v2_priced_TS 테이블에서 전월 이용시간 조회 중...');
     
-    final result = await ApiService.getData(
+    final result = await ApiService.getDataList(
       table: 'v2_priced_TS',
       where: whereConditions,
     );
@@ -320,7 +320,7 @@ class LockerApiService {
     
     print('🔍 [LockerApiService] v2_Locker_bill 테이블에서 기납부 정보 조회 중...');
     
-    final result = await ApiService.getData(
+    final result = await ApiService.getDataList(
       table: 'v2_Locker_bill',
       where: whereConditions,
     );
@@ -417,7 +417,7 @@ class LockerApiService {
       try {
         final memberId = int.parse(searchText);
         print('member_id로 검색: $memberId');
-        final idResults = await ApiService.getData(
+        final idResults = await ApiService.getDataList(
           table: 'v3_members',
           where: [
             ...whereConditions,
@@ -433,7 +433,7 @@ class LockerApiService {
     
     // 이름으로 검색
     try {
-      final nameResults = await ApiService.getData(
+      final nameResults = await ApiService.getDataList(
         table: 'v3_members',
         where: [
           ...whereConditions,
@@ -456,7 +456,7 @@ class LockerApiService {
       final cleanedSearch = searchText.replaceAll('-', '');
       
       // 원본 검색어로 검색 (하이픈 포함된 경우)
-      final phoneResults1 = await ApiService.getData(
+      final phoneResults1 = await ApiService.getDataList(
         table: 'v3_members',
         where: [
           ...whereConditions,
@@ -474,7 +474,7 @@ class LockerApiService {
       // DB의 전화번호에서도 하이픈을 제거하고 비교해야 하지만, LIKE로는 한계가 있음
       // 따라서 모든 회원을 가져와서 클라이언트에서 필터링
       if (RegExp(r'^\d+$').hasMatch(cleanedSearch)) {
-        final allMembers = await ApiService.getData(
+        final allMembers = await ApiService.getDataList(
           table: 'v3_members',
           where: whereConditions,
         );
@@ -520,7 +520,7 @@ class LockerApiService {
     try {
       // member_id 리스트로 회원 정보 조회
       print('API 호출 중...');
-      final members = await ApiService.getData(
+      final members = await ApiService.getDataList(
         table: 'v3_members',
         where: [
           if (branchId != null) {'field': 'branch_id', 'operator': '=', 'value': branchId},
@@ -576,7 +576,7 @@ class LockerApiService {
     print('  branch_id: $branchId');
     
     try {
-      final members = await ApiService.getData(
+      final members = await ApiService.getDataList(
         table: 'v3_members',
         where: [
           if (branchId != null) {'field': 'branch_id', 'operator': '=', 'value': branchId},
@@ -802,7 +802,7 @@ class LockerApiService {
   }) async {
     final branchId = ApiService.getCurrentBranchId();
     
-    return ApiService.getData(
+    return ApiService.getDataList(
       table: 'v2_Locker_bill',
       where: [
         {'field': 'member_id', 'operator': '=', 'value': memberId},
@@ -821,7 +821,7 @@ class LockerApiService {
     final branchId = ApiService.getCurrentBranchId();
     
     print('🔍 [LockerApiService] v2_Locker_bill 테이블 전체 조회 중...');
-    final result = await ApiService.getData(
+    final result = await ApiService.getDataList(
       table: 'v2_Locker_bill',
       where: [
         if (branchId != null) {'field': 'branch_id', 'operator': '=', 'value': branchId},
@@ -846,7 +846,7 @@ class LockerApiService {
       final today = DateTime.now();
       
       // 해당 회원의 활성 크레딧 계약 조회
-      final contracts = await ApiService.getData(
+      final contracts = await ApiService.getDataList(
         table: 'v3_contract_history',
         where: [
           {'field': 'member_id', 'operator': '=', 'value': memberId},
@@ -878,7 +878,7 @@ class LockerApiService {
         final contractHistoryId = contract['contract_history_id'];
         
         // 해당 계약의 가장 최근 bill 조회
-        final bills = await ApiService.getData(
+        final bills = await ApiService.getDataList(
           table: 'v2_bills',
           where: [
             {'field': 'contract_history_id', 'operator': '=', 'value': contractHistoryId},
@@ -928,7 +928,7 @@ class LockerApiService {
       final today = DateTime.now();
       
       // 해당 회원의 활성 크레딧 계약 조회
-      final contracts = await ApiService.getData(
+      final contracts = await ApiService.getDataList(
         table: 'v3_contract_history',
         where: [
           {'field': 'member_id', 'operator': '=', 'value': memberId},
@@ -958,7 +958,7 @@ class LockerApiService {
             if (expiry.isAfter(today)) {
               // 해당 계약의 현재 잔액 계산
               final contractHistoryId = contract['contract_history_id'];
-              final bills = await ApiService.getData(
+              final bills = await ApiService.getDataList(
                 table: 'v2_bills',
                 where: [
                   {'field': 'contract_history_id', 'operator': '=', 'value': contractHistoryId},
@@ -1023,7 +1023,7 @@ class LockerApiService {
 
       if (creditContract == null) {
         // 크레딧 계약이 아예 없는지 확인
-        final allContracts = await ApiService.getData(
+        final allContracts = await ApiService.getDataList(
           table: 'v3_contract_history',
           where: [
             {'field': 'member_id', 'operator': '=', 'value': memberId},
@@ -1435,7 +1435,7 @@ class LockerApiService {
         if (branchId != null) {'field': 'branch_id', 'operator': '=', 'value': branchId},
       ];
       
-      final bills = await ApiService.getData(
+      final bills = await ApiService.getDataList(
         table: 'v2_Locker_bill',
         where: whereConditions,
         orderBy: [{'field': 'locker_bill_id', 'direction': 'DESC'}],
@@ -1499,7 +1499,7 @@ class LockerApiService {
       print('🔍 [DEBUG] returnDate: $returnDate');
       
       // 1. 해당 bill_id로 contract_history_id 조회
-      final billData = await ApiService.getData(
+      final billData = await ApiService.getDataList(
         table: 'v2_bills',
         where: [
           {'field': 'bill_id', 'operator': '=', 'value': billId},
@@ -1521,7 +1521,7 @@ class LockerApiService {
       print('🔍 [DEBUG] member_id: $memberId');
       
       // 2. 해당 contract_history_id의 가장 마지막 bill_id의 bill_balance_after 조회
-      final latestBills = await ApiService.getData(
+      final latestBills = await ApiService.getDataList(
         table: 'v2_bills',
         where: [
           {'field': 'contract_history_id', 'operator': '=', 'value': contractHistoryId},
@@ -1613,7 +1613,7 @@ class LockerApiService {
       
       print('🔍 [DEBUG] 검색 조건: $whereConditions');
       
-      final bills = await ApiService.getData(
+      final bills = await ApiService.getDataList(
         table: 'v2_Locker_bill',
         where: whereConditions,
         orderBy: [{'field': 'locker_bill_id', 'direction': 'DESC'}],

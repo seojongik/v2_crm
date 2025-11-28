@@ -513,7 +513,7 @@ class _LoginWidgetState extends State<LoginWidget> {
       for (var staff in staffList) {
         try {
           // 직원의 권한 정보 조회
-          final accessSettings = await ApiService.getData(
+          final accessSettings = await ApiService.getDataList(
             table: 'v2_staff_access_setting',
             where: [
               {
@@ -1048,7 +1048,7 @@ class _LoginWidgetState extends State<LoginWidget> {
       print('🔍 [권한조회] v2_staff_access_setting 테이블 조회 시작');
       print('📍 [권한조회] staff_access_id: $staffAccessId, branch_id: $branchId');
 
-      final accessSettings = await ApiService.getData(
+      final accessSettings = await ApiService.getDataList(
         table: 'v2_staff_access_setting',
         where: [
           {

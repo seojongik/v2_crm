@@ -48,7 +48,7 @@ class _TransferConfirmationPageState extends State<TransferConfirmationPage> {
 
   Future<void> _loadBranchInfo() async {
     try {
-      final data = await ApiService.getData(
+      final data = await ApiService.getDataList(
         table: 'v2_branch',
         where: [
           {
@@ -83,7 +83,7 @@ class _TransferConfirmationPageState extends State<TransferConfirmationPage> {
       return;
     }
     try {
-      final data = await ApiService.getData(
+      final data = await ApiService.getDataList(
         table: 'v3_members',
         where: [
           {

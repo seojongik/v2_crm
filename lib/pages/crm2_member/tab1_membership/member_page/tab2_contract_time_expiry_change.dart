@@ -43,7 +43,7 @@ class _TimeExpiryChangeDialogState extends State<TimeExpiryChangeDialog> {
         errorMessage = null;
       });
 
-      final response = await ApiService.getData(
+      final response = await ApiService.getDataList(
         table: 'v2_bill_times',
         where: [
           {
@@ -121,7 +121,7 @@ class _TimeExpiryChangeDialogState extends State<TimeExpiryChangeDialog> {
       });
 
       // 먼저 가장 최근 bill_min_id를 찾기
-      final latestBillResponse = await ApiService.getData(
+      final latestBillResponse = await ApiService.getDataList(
         table: 'v2_bill_times',
         where: [
           {

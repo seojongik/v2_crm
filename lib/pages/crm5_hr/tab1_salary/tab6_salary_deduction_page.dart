@@ -35,7 +35,7 @@ class _TaxDeductionPageState extends State<TaxDeductionPage> {
 
     try {
       // 토큰으로 강사 데이터 조회
-      final proData = await ApiService.getData(
+      final proData = await ApiService.getDataList(
         table: 'v2_salary_pro',
         where: [
           {'field': 'tax_token', 'operator': '=', 'value': widget.token},
@@ -58,7 +58,7 @@ class _TaxDeductionPageState extends State<TaxDeductionPage> {
       }
 
       // 강사 데이터가 없으면 매니저 데이터 조회
-      final managerData = await ApiService.getData(
+      final managerData = await ApiService.getDataList(
         table: 'v2_salary_manager',
         where: [
           {'field': 'tax_token', 'operator': '=', 'value': widget.token},

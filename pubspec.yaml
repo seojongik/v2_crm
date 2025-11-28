@@ -99,6 +99,9 @@ dependencies:
   # 이메일 발송을 위한 패키지
   mailer: ^6.1.2
   crypto: ^3.0.3
+  
+  # Supabase (cafe24에서 마이그레이션)
+  supabase_flutter: ^2.8.4
 
   # The following adds the Cupertino Icons font to your application.
   # Use with the CupertinoIcons class for iOS style icons.

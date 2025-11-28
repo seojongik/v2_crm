@@ -1759,7 +1759,7 @@ class TsTsMoveDialog {
     try {
       // 후속 레코드들 조회
       print('🔍 재계산 대상 조회: contract_history_id=$contractHistoryId, bill_id > $currentBillId');
-      final subsequentBills = await ApiService.getData(
+      final subsequentBills = await ApiService.getDataList(
         table: 'v2_bills',
         where: [
           {'field': 'contract_history_id', 'operator': '=', 'value': contractHistoryId},
@@ -1818,7 +1818,7 @@ class TsTsMoveDialog {
       
       // 후속 레코드들 조회
       print('🔍 재계산 대상 조회: contract_history_id=$contractHistoryId, bill_min_id > $currentBillMinId');
-      final subsequentBillTimes = await ApiService.getData(
+      final subsequentBillTimes = await ApiService.getDataList(
         table: 'v2_bill_times',
         where: [
           {'field': 'contract_history_id', 'operator': '=', 'value': contractHistoryId},

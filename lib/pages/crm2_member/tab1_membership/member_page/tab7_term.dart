@@ -35,7 +35,7 @@ class _Tab7TermWidgetState extends State<Tab7TermWidget> {
     try {
       print('=== 홀드 이력 조회 시작: contract_history_id = $contractHistoryId ===');
 
-      final data = await ApiService.getData(
+      final data = await ApiService.getDataList(
         table: 'v2_bill_term_hold',
         where: [
           {'field': 'contract_history_id', 'operator': '=', 'value': contractHistoryId}

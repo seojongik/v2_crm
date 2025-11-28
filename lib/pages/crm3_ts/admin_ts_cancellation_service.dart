@@ -294,7 +294,7 @@ class AdminTsCancellationSimulationService {
       // 1. 해당 테이블의 취소 정책 조회 (apply_sequence 순으로 정렬) - 고객용 앱 방식 사용
       print('🔍 취소 정책 조회 시작 ($table)');
       
-      final policies = await ApiService.getData(
+      final policies = await ApiService.getDataList(
         table: 'v2_cancellation_policy',
         where: [
           {'field': 'db_table', 'operator': '=', 'value': table}

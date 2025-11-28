@@ -48,7 +48,7 @@ class _LessonProChangeDialogState extends State<LessonProChangeDialog> {
       });
 
       // 1. 현재 레슨 카운팅 정보 가져오기 (가장 최근 레코드)
-      final lsCountingResponse = await ApiService.getData(
+      final lsCountingResponse = await ApiService.getDataList(
         table: 'v3_LS_countings',
         where: [
           {
@@ -76,7 +76,7 @@ class _LessonProChangeDialogState extends State<LessonProChangeDialog> {
       }
 
       // 3. 재직중인 프로 목록 가져오기
-      final prosResponse = await ApiService.getData(
+      final prosResponse = await ApiService.getDataList(
         table: 'v2_staff_pro',
         where: [
           {

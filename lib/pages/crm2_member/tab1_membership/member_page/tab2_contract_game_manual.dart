@@ -45,7 +45,7 @@ class _GameManualDialogState extends State<GameManualDialog> {
   Future<void> _loadCurrentBalance() async {
     try {
       // 현재 잔액 조회 (가장 최근 bill_game_id)
-      final response = await ApiService.getData(
+      final response = await ApiService.getDataList(
         table: 'v2_bill_games',
         where: [
           {

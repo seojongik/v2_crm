@@ -106,7 +106,7 @@ class _TransferMembershipWidgetState extends State<TransferMembershipWidget> {
 
       try {
         // 먼저 모든 회원을 조회해보자
-        final data = await ApiService.getData(
+        final data = await ApiService.getDataList(
           table: 'v3_members',
           fields: ['member_id', 'member_no_branch', 'member_name', 'member_phone'],
           where: [
@@ -467,7 +467,7 @@ class _TransferMembershipWidgetState extends State<TransferMembershipWidget> {
     print('=== 현재 레슨권 정보 조회 시작 ===');
     print('contract_history_id: ${widget.contract['contract_history_id']}');
     
-    final data = await ApiService.getData(
+    final data = await ApiService.getDataList(
       table: 'v3_LS_countings',
       where: [
         {
@@ -515,7 +515,7 @@ class _TransferMembershipWidgetState extends State<TransferMembershipWidget> {
     print('=== 현재 시간권 잔액 조회 시작 ===');
     print('contract_history_id: ${widget.contract['contract_history_id']}');
     
-    final data = await ApiService.getData(
+    final data = await ApiService.getDataList(
       table: 'v2_bill_times',
       where: [
         {
@@ -556,7 +556,7 @@ class _TransferMembershipWidgetState extends State<TransferMembershipWidget> {
     print('=== 현재 게임권 잔액 조회 시작 ===');
     print('contract_history_id: ${widget.contract['contract_history_id']}');
     
-    final data = await ApiService.getData(
+    final data = await ApiService.getDataList(
       table: 'v2_bill_games',
       where: [
         {

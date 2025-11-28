@@ -111,7 +111,7 @@ class TsCancellationSimulationService {
       print('🔍 취소 정책 조회 시작 (v2_bills)');
       
       // 1. 해당 테이블의 취소 정책 조회 (apply_sequence 순으로 정렬)
-      final policies = await ApiService.getData(
+      final policies = await ApiService.getDataList(
         table: 'v2_cancellation_policy',
         where: [
           {'field': 'db_table', 'operator': '=', 'value': 'v2_bills'}
@@ -204,7 +204,7 @@ class TsCancellationSimulationService {
       
       print('  - where 조건: $whereConditions');
       
-      final result = await ApiService.getData(
+      final result = await ApiService.getDataList(
         table: 'v2_discount_coupon',
         where: whereConditions,
       );
@@ -243,7 +243,7 @@ class TsCancellationSimulationService {
       
       print('  - where 조건: $whereConditions');
       
-      final result = await ApiService.getData(
+      final result = await ApiService.getDataList(
         table: 'v2_discount_coupon',
         where: whereConditions,
       );
@@ -462,7 +462,7 @@ class TsReservationCancelService {
       final branchId = ApiService.getCurrentBranchId();
       if (branchId != null) {
         print('\n=== 디버깅: 모든 관련 쿠폰 조회 ===');
-        final allCoupons = await ApiService.getData(
+        final allCoupons = await ApiService.getDataList(
           table: 'v2_discount_coupon',
           where: [
             {'field': 'branch_id', 'operator': '=', 'value': branchId},
@@ -555,7 +555,7 @@ class TsReservationCancelService {
           );
           
           // 3-4. 동일 계약의 후속 레코드들 조회
-          final subsequentBills = await ApiService.getData(
+          final subsequentBills = await ApiService.getDataList(
             table: 'v2_bills',
             where: [
               {'field': 'contract_history_id', 'operator': '=', 'value': contractHistoryId},
@@ -680,7 +680,7 @@ class TsReservationCancelService {
           );
           
           // 4-5. 동일 계약의 후속 레코드들 조회
-          final subsequentBillTimes = await ApiService.getData(
+          final subsequentBillTimes = await ApiService.getDataList(
             table: 'v2_bill_times',
             where: [
               {'field': 'contract_history_id', 'operator': '=', 'value': contractHistoryId},

@@ -81,7 +81,7 @@ class _ExpiryChangeDialogState extends State<ExpiryChangeDialog> {
           throw Exception('지원하지 않는 benefitType: ${widget.benefitType}');
       }
 
-      final response = await ApiService.getData(
+      final response = await ApiService.getDataList(
         table: tableName,
         where: [
           {
@@ -195,7 +195,7 @@ class _ExpiryChangeDialogState extends State<ExpiryChangeDialog> {
       }
 
       // 먼저 가장 최근 레코드를 찾기
-      final latestBillResponse = await ApiService.getData(
+      final latestBillResponse = await ApiService.getDataList(
         table: tableName,
         where: [
           {

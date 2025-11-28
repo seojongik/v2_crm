@@ -132,7 +132,7 @@ class _Tab3ExpiryWidgetState extends State<Tab3ExpiryWidget> with SingleTickerPr
       case 3: // 게임권
         tableName = 'v2_bill_games';
         productType = 'game';
-        billData = await ApiService.getData(
+        billData = await ApiService.getDataList(
           table: 'v2_bill_games',
           where: [{'field': 'branch_id', 'operator': '=', 'value': branchId}],
         );
@@ -140,7 +140,7 @@ class _Tab3ExpiryWidgetState extends State<Tab3ExpiryWidget> with SingleTickerPr
       case 4: // 레슨권
         tableName = 'v3_LS_countings';
         productType = 'lesson';
-        billData = await ApiService.getData(
+        billData = await ApiService.getDataList(
           table: 'v3_LS_countings',
           where: [{'field': 'branch_id', 'operator': '=', 'value': branchId}],
         );
@@ -148,7 +148,7 @@ class _Tab3ExpiryWidgetState extends State<Tab3ExpiryWidget> with SingleTickerPr
       case 5: // 기간권
         tableName = 'v2_bill_term';
         productType = 'term';
-        billData = await ApiService.getData(
+        billData = await ApiService.getDataList(
           table: 'v2_bill_term',
           where: [{'field': 'branch_id', 'operator': '=', 'value': branchId}],
         );
@@ -216,7 +216,7 @@ class _Tab3ExpiryWidgetState extends State<Tab3ExpiryWidget> with SingleTickerPr
     final memberIds = contracts.map((c) => c['member_id']).whereType<int>().toSet().toList();
 
     // v3_members에서 member_name 조회
-    final members = await ApiService.getData(
+    final members = await ApiService.getDataList(
       table: 'v3_members',
       where: [
         {
@@ -234,7 +234,7 @@ class _Tab3ExpiryWidgetState extends State<Tab3ExpiryWidget> with SingleTickerPr
 
     // 레슨권 프로 목록 추출 (v2_staff_pro 테이블에서 조회)
     if (productType == 'lesson') {
-      final pros = await ApiService.getData(
+      final pros = await ApiService.getDataList(
         table: 'v2_staff_pro',
         where: [
           {'field': 'branch_id', 'operator': '=', 'value': branchId},

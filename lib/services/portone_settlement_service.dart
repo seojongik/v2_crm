@@ -290,7 +290,7 @@ class PortoneSettlementService {
     
     try {
       print('DB 조회 시작...');
-      final payments = await ApiService.getData(
+      final payments = await ApiService.getDataList(
         table: 'v2_portone_payments',
         where: [
           {'field': 'branch_id', 'operator': '=', 'value': branchId},
@@ -349,7 +349,7 @@ class PortoneSettlementService {
         });
       }
       
-      final totalCount = await ApiService.getData(
+      final totalCount = await ApiService.getDataList(
         table: 'v2_portone_payments',
         where: [
           {'field': 'branch_id', 'operator': '=', 'value': branchId},
@@ -410,7 +410,7 @@ class PortoneSettlementService {
     }
     
     try {
-      final payments = await ApiService.getData(
+      final payments = await ApiService.getDataList(
         table: 'v2_portone_payments',
         where: [
           {'field': 'portone_payment_uid', 'operator': 'IN', 'value': paymentIds},
@@ -469,7 +469,7 @@ class PortoneSettlementService {
       // 수수료 정책은 포트원에서 관리되므로, 정확한 정산 금액은 포트원 API에서만 제공됩니다.
       
       // 모든 지점의 결제 내역 조회 (대략적인 정보만 제공)
-      final payments = await ApiService.getData(
+      final payments = await ApiService.getDataList(
         table: 'v2_portone_payments',
         where: [
           {'field': 'payment_status', 'operator': '=', 'value': 'PAID'},

@@ -59,7 +59,7 @@ class _Tab6SalaryWidgetState extends State<Tab6SalaryWidget> {
 
       // v2_salary_pro 테이블에서 강사 급여 데이터 조회
       print('🔍 [급여데이터] v2_salary_pro 조회 시작 - branch_id: $currentBranchId, year: ${selectedMonth.year}, month: ${selectedMonth.month}');
-      final proData = await ApiService.getData(
+      final proData = await ApiService.getDataList(
         table: 'v2_salary_pro',
         where: [
           {'field': 'branch_id', 'operator': '=', 'value': currentBranchId},
@@ -74,7 +74,7 @@ class _Tab6SalaryWidgetState extends State<Tab6SalaryWidget> {
 
       // v2_salary_manager 테이블에서 매니저 급여 데이터 조회
       print('🔍 [급여데이터] v2_salary_manager 조회 시작 - branch_id: $currentBranchId, year: ${selectedMonth.year}, month: ${selectedMonth.month}');
-      final managerData = await ApiService.getData(
+      final managerData = await ApiService.getDataList(
         table: 'v2_salary_manager',
         where: [
           {'field': 'branch_id', 'operator': '=', 'value': currentBranchId},
@@ -223,7 +223,7 @@ class _Tab6SalaryWidgetState extends State<Tab6SalaryWidget> {
       }
 
       // 직전월 강사 데이터에서 세무사 정보 조회
-      final prevProData = await ApiService.getData(
+      final prevProData = await ApiService.getDataList(
         table: 'v2_salary_pro',
         fields: ['tax_office', 'tax_office_mail'],
         where: [
@@ -242,7 +242,7 @@ class _Tab6SalaryWidgetState extends State<Tab6SalaryWidget> {
       }
 
       // 강사 데이터에 없으면 매니저 데이터에서 조회
-      final prevManagerData = await ApiService.getData(
+      final prevManagerData = await ApiService.getDataList(
         table: 'v2_salary_manager',
         fields: ['tax_office', 'tax_office_mail'],
         where: [
@@ -847,7 +847,7 @@ class _Tab6SalaryWidgetState extends State<Tab6SalaryWidget> {
     try {
       final currentBranchId = ApiService.getCurrentBranchId();
       if (currentBranchId != null) {
-        final branchData = await ApiService.getData(
+        final branchData = await ApiService.getDataList(
           table: 'v2_branch',
           where: [
             {'field': 'branch_id', 'operator': '=', 'value': currentBranchId},

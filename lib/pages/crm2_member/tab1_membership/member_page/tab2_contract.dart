@@ -157,7 +157,7 @@ class _Tab2ContractWidgetState extends State<Tab2ContractWidget> {
         final contractId = contract['contract_id'];
         if (contractId != null) {
           // v2_contracts 테이블에서 상세 정보 조회
-          final contractDetails = await ApiService.getData(
+          final contractDetails = await ApiService.getDataList(
             table: 'v2_contracts',
             where: [
               {
@@ -397,7 +397,7 @@ class _Tab2ContractWidgetState extends State<Tab2ContractWidget> {
   // 게임권 잔액 및 유효기간 조회 (v2_bill_games에서 가장 큰 bill_game_id)
   Future<Map<String, dynamic>> _getGameBalance(int contractHistoryId) async {
     try {
-      final data = await ApiService.getData(
+      final data = await ApiService.getDataList(
         table: 'v2_bill_games',
         where: [
           {
@@ -445,7 +445,7 @@ class _Tab2ContractWidgetState extends State<Tab2ContractWidget> {
   // 기간권 정보 조회 (v2_bill_term에서 남은 일수와 만료일 반환)
   Future<Map<String, dynamic>?> _getTermData(int contractHistoryId) async {
     try {
-      final data = await ApiService.getData(
+      final data = await ApiService.getDataList(
         table: 'v2_bill_term',
         where: [
           {
@@ -497,7 +497,7 @@ class _Tab2ContractWidgetState extends State<Tab2ContractWidget> {
   // 레슨권 잔액 및 유효기간 조회 (v3_LS_countings에서 가장 큰 LS_counting_id)
   Future<Map<String, dynamic>> _getLessonBalance(int contractHistoryId) async {
     try {
-      final data = await ApiService.getData(
+      final data = await ApiService.getDataList(
         table: 'v3_LS_countings',
         where: [
           {
@@ -603,7 +603,7 @@ class _Tab2ContractWidgetState extends State<Tab2ContractWidget> {
   // 프로그램 ID로 프로그램명을 조회하는 함수
   Future<String> _getProgramName(String programId) async {
     try {
-      final data = await ApiService.getData(
+      final data = await ApiService.getDataList(
         table: 'v2_base_option_setting',
         where: [
           {
@@ -2967,7 +2967,7 @@ class _Tab2ContractWidgetState extends State<Tab2ContractWidget> {
           // 클라이언트에서 예약취소 제외
           return data.where((item) => item['bill_type'] != '예약취소').toList();
         case 'game':
-          final data = await ApiService.getData(
+          final data = await ApiService.getDataList(
             table: 'v2_bill_games',
             where: [
               {
@@ -2996,7 +2996,7 @@ class _Tab2ContractWidgetState extends State<Tab2ContractWidget> {
           // 클라이언트에서 예약취소 제외
           return data.where((item) => item['bill_type'] != '예약취소').toList();
         case 'term':
-          return await ApiService.getData(
+          return await ApiService.getDataList(
             table: 'v2_bill_term',
             where: [
               {
@@ -3023,7 +3023,7 @@ class _Tab2ContractWidgetState extends State<Tab2ContractWidget> {
             ],
           );
         case 'lesson':
-          final data = await ApiService.getData(
+          final data = await ApiService.getDataList(
             table: 'v3_LS_countings',
             where: [
               {
@@ -3205,7 +3205,7 @@ class _Tab2ContractWidgetState extends State<Tab2ContractWidget> {
   // 홀드 이력 조회
   Future<List<Map<String, dynamic>>> _getHoldHistory(int contractHistoryId) async {
     try {
-      final data = await ApiService.getData(
+      final data = await ApiService.getDataList(
         table: 'v2_bill_term_hold',
         where: [
           {

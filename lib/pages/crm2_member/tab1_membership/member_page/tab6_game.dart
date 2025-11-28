@@ -40,7 +40,7 @@ class _Tab6GameWidgetState extends State<Tab6GameWidget> {
 
     try {
       // 1. 해당 회원의 모든 v2_bill_games 데이터 조회하여 contract_history_id별로 그룹핑
-      final allGameData = await ApiService.getData(
+      final allGameData = await ApiService.getDataList(
         table: 'v2_bill_games',
         where: [
           {
@@ -175,7 +175,7 @@ class _Tab6GameWidgetState extends State<Tab6GameWidget> {
     });
 
     try {
-      final allData = await ApiService.getData(
+      final allData = await ApiService.getDataList(
         table: 'v2_bill_games',
         where: [
           {'field': 'member_id', 'operator': '=', 'value': widget.memberId},

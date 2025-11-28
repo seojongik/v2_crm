@@ -230,7 +230,7 @@ class _MemberSelectScreenState extends State<_MemberSelectScreen> {
     setState(() => _isLoading = true);
 
     try {
-      final response = await ApiService.getData(
+      final response = await ApiService.getDataList(
         table: 'v3_members',
         where: [
           {

@@ -34,7 +34,7 @@ class _ContractViewerDialogState extends State<ContractViewerDialog> {
       });
 
       // 1. contract_history_id로 contract_id 조회
-      final historyData = await ApiService.getData(
+      final historyData = await ApiService.getDataList(
         table: 'v3_contract_history',
         where: [
           {
@@ -58,7 +58,7 @@ class _ContractViewerDialogState extends State<ContractViewerDialog> {
       final contractId = historyData[0]['contract_id'];
 
       // 2. contract_id로 회원권 상세 정보 조회
-      final contracts = await ApiService.getData(
+      final contracts = await ApiService.getDataList(
         table: 'v2_contracts',
         where: [
           {

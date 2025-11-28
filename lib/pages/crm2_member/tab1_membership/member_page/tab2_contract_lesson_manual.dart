@@ -46,7 +46,7 @@ class _LessonManualDialogState extends State<LessonManualDialog> {
   Future<void> _loadCurrentBalance() async {
     try {
       // 현재 잔액 조회 (가장 최근 LS_counting_id)
-      final response = await ApiService.getData(
+      final response = await ApiService.getDataList(
         table: 'v3_LS_countings',
         where: [
           {

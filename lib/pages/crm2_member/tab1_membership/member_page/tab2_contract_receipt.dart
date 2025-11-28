@@ -36,7 +36,7 @@ class _ContractReceiptDialogState extends State<ContractReceiptDialog> {
       });
 
       // branch_id로 사업자 정보 조회
-      final data = await ApiService.getData(
+      final data = await ApiService.getDataList(
         table: 'v2_branch',
         where: [
           {

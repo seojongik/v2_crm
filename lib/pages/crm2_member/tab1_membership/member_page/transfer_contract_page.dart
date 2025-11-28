@@ -42,7 +42,7 @@ class _TransferContractPageState extends State<TransferContractPage> {
 
   Future<void> _loadBranchInfo() async {
     try {
-      final data = await ApiService.getData(
+      final data = await ApiService.getDataList(
         table: 'v2_branch',
         where: [
           {

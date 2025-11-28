@@ -51,7 +51,7 @@ class _LockerMonthlyBillingDialogState extends State<LockerMonthlyBillingDialog>
       final creditBalanceData = <int, int>{};
       
       for (var memberId in memberIds) {
-        final memberData = await ApiService.getData(
+        final memberData = await ApiService.getDataList(
           table: 'v3_members',
           where: [
             {'field': 'member_id', 'operator': '=', 'value': memberId},

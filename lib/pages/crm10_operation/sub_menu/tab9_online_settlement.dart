@@ -63,7 +63,7 @@ class _Tab9OnlineSettlementWidgetState extends State<Tab9OnlineSettlementWidget>
       print('지점 ID: $_currentBranchId');
       
       // v2_branch 테이블에서 포트원 API Secret 조회
-      final branches = await ApiService.getData(
+      final branches = await ApiService.getDataList(
         table: 'v2_branch',
         where: [
           {'field': 'branch_id', 'operator': '=', 'value': _currentBranchId ?? ''},

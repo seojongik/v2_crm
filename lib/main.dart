@@ -6,6 +6,7 @@ import 'flutter_flow/flutter_flow_util.dart';
 import 'backend/firebase/firebase_config.dart';
 import 'services/chat_notification_service.dart';
 import 'services/session_manager.dart';
+import 'services/supabase_adapter.dart';
 import 'widgets/activity_detector.dart';
 import 'pages/access_selection_page.dart';
 import 'utils/access_selection_helper.dart';
@@ -17,6 +18,10 @@ void main() async {
   // Firebase 초기화
   await initFirebase();
   print('🔥 Firebase 초기화 완료');
+  
+  // Supabase 초기화 (cafe24에서 마이그레이션)
+  await SupabaseAdapter.initialize();
+  print('🗄️ Supabase 초기화 완료');
   
   await FlutterFlowTheme.initialize();
   

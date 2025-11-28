@@ -37,7 +37,7 @@ class _Tab6SalaryBackupWidgetState extends State<Tab6SalaryBackupWidget> {
       }
 
       // v2_salary_pro 테이블에서 강사 급여 데이터 조회
-      final proData = await ApiService.getData(
+      final proData = await ApiService.getDataList(
         table: 'v2_salary_pro',
         where: [
           {'field': 'branch_id', 'operator': '=', 'value': currentBranchId},
@@ -47,7 +47,7 @@ class _Tab6SalaryBackupWidgetState extends State<Tab6SalaryBackupWidget> {
       );
 
       // v2_salary_manager 테이블에서 매니저 급여 데이터 조회
-      final managerData = await ApiService.getData(
+      final managerData = await ApiService.getDataList(
         table: 'v2_salary_manager',
         where: [
           {'field': 'branch_id', 'operator': '=', 'value': currentBranchId},
