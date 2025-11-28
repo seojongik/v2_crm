@@ -1,9 +1,8 @@
-import 'dart:convert';
 import 'package:flutter/material.dart';
-import 'package:http/http.dart' as http;
 import 'package:intl/intl.dart';
 import 'package:flutter/foundation.dart';
 import '/services/api_service.dart';
+import '/services/supabase_adapter.dart';
 import '/services/salary_form_service.dart';
 
 class ManagerSalaryDialog extends StatefulWidget {
@@ -87,107 +86,84 @@ class _ManagerSalaryDialogState extends State<ManagerSalaryDialog> with SingleTi
     }
   }
 
-  // 계약 정보 로드
+  // 계약 정보 로드 - Supabase
   Future<void> _loadContractInfo() async {
     final branchId = ApiService.getCurrentBranchId();
-    
-    final response = await http.post(
-      Uri.parse('https://autofms.mycafe24.com/dynamic_api.php'),
-      headers: {
-        'Content-Type': 'application/json',
-        'Accept': 'application/json',
-      },
-      body: json.encode({
-        'operation': 'get',
-        'table': 'v2_staff_manager',
-        'where': [
-          {'field': 'branch_id', 'operator': '=', 'value': branchId},
-          {'field': 'manager_id', 'operator': '=', 'value': widget.managerId.toString()},
-          {'field': 'staff_status', 'operator': '=', 'value': '재직'},
-        ],
-        'orderBy': [
-          {'field': 'manager_contract_round', 'direction': 'DESC'}
-        ],
-      }),
-    ).timeout(Duration(seconds: 15));
 
-    if (response.statusCode == 200) {
-      final result = json.decode(response.body);
-      if (result['success'] == true && result['data'].isNotEmpty) {
-        final contractData = result['data'] as List;
-        _contractInfo = contractData.first; // 최신 계약 (가장 큰 manager_contract_round)
-        print('✅ 계약 정보 로드 완료: ${_contractInfo['manager_name']}');
-      }
+    final contractData = await SupabaseAdapter.getData(
+      table: 'v2_staff_manager',
+      where: [
+        {'field': 'branch_id', 'operator': '=', 'value': branchId},
+        {'field': 'manager_id', 'operator': '=', 'value': widget.managerId.toString()},
+        {'field': 'staff_status', 'operator': '=', 'value': '재직'},
+      ],
+      orderBy: [
+        {'field': 'manager_contract_round', 'direction': 'DESC'}
+      ],
+    );
+
+    if (contractData.isNotEmpty) {
+      _contractInfo = contractData.first; // 최신 계약 (가장 큰 manager_contract_round)
+      print('✅ 계약 정보 로드 완료: ${_contractInfo['manager_name']}');
     }
   }
 
-  // 월별 급여 데이터 로드 (최근 6개월)
+  // 월별 급여 데이터 로드 (최근 6개월) - Supabase
   Future<void> _loadMonthlySalaryData() async {
     final branchId = ApiService.getCurrentBranchId();
     _monthlySalaryData.clear();
-    
+
     // 선택된 월을 기준으로 최근 6개월 데이터 가져오기
     for (int i = 5; i >= 0; i--) {
       final targetDate = DateTime(widget.selectedMonth.year, widget.selectedMonth.month - i, 1);
       final year = targetDate.year;
       final month = targetDate.month;
-      
-      try {
-        final response = await http.post(
-          Uri.parse('https://autofms.mycafe24.com/dynamic_api.php'),
-          headers: {
-            'Content-Type': 'application/json',
-            'Accept': 'application/json',
-          },
-          body: json.encode({
-            'operation': 'get',
-            'table': 'v2_salary_manager',
-            'where': [
-              {'field': 'branch_id', 'operator': '=', 'value': branchId},
-              {'field': 'manager_id', 'operator': '=', 'value': widget.managerId.toString()},
-              {'field': 'year', 'operator': '=', 'value': year.toString()},
-              {'field': 'month', 'operator': '=', 'value': month.toString()},
-            ],
-          }),
-        ).timeout(Duration(seconds: 10));
 
-        if (response.statusCode == 200) {
-          final result = json.decode(response.body);
-          if (result['success'] == true && result['data'].isNotEmpty) {
-            final salaryRecord = result['data'][0];
-            _monthlySalaryData.add({
-              'year': year,
-              'month': month,
-              'salary_base': int.tryParse(salaryRecord['salary_base']?.toString() ?? '0') ?? 0,
-              'salary_hour': int.tryParse(salaryRecord['salary_hour']?.toString() ?? '0') ?? 0,
-              'salary_total': int.tryParse(salaryRecord['salary_total']?.toString() ?? '0') ?? 0,
-              'deduction_sum': int.tryParse(salaryRecord['deduction_sum']?.toString() ?? '0') ?? 0,
-              'salary_net': int.tryParse(salaryRecord['salary_net']?.toString() ?? '0') ?? 0,
-              'salary_status': salaryRecord['salary_status'] ?? '',
-              'business_income_tax': int.tryParse(salaryRecord['business_income_tax']?.toString() ?? '0') ?? 0,
-              'local_tax': int.tryParse(salaryRecord['local_tax']?.toString() ?? '0') ?? 0,
-              'income_tax': int.tryParse(salaryRecord['income_tax']?.toString() ?? '0') ?? 0,
-              'four_insure': int.tryParse(salaryRecord['four_insure']?.toString() ?? '0') ?? 0,
-              'other_deduction': int.tryParse(salaryRecord['other_deduction']?.toString() ?? '0') ?? 0,
-            });
-          } else {
-            // 데이터가 없는 경우 빈 레코드 추가 (해당 월에 급여 정산이 없음을 표시)
-            _monthlySalaryData.add({
-              'year': year,
-              'month': month,
-              'salary_base': 0,
-              'salary_hour': 0,
-              'salary_total': 0,
-              'deduction_sum': 0,
-              'salary_net': 0,
-              'salary_status': '미정산',
-              'business_income_tax': 0,
-              'local_tax': 0,
-              'income_tax': 0,
-              'four_insure': 0,
-              'other_deduction': 0,
-            });
-          }
+      try {
+        final salaryData = await SupabaseAdapter.getData(
+          table: 'v2_salary_manager',
+          where: [
+            {'field': 'branch_id', 'operator': '=', 'value': branchId},
+            {'field': 'manager_id', 'operator': '=', 'value': widget.managerId.toString()},
+            {'field': 'year', 'operator': '=', 'value': year.toString()},
+            {'field': 'month', 'operator': '=', 'value': month.toString()},
+          ],
+        );
+
+        if (salaryData.isNotEmpty) {
+          final salaryRecord = salaryData[0];
+          _monthlySalaryData.add({
+            'year': year,
+            'month': month,
+            'salary_base': int.tryParse(salaryRecord['salary_base']?.toString() ?? '0') ?? 0,
+            'salary_hour': int.tryParse(salaryRecord['salary_hour']?.toString() ?? '0') ?? 0,
+            'salary_total': int.tryParse(salaryRecord['salary_total']?.toString() ?? '0') ?? 0,
+            'deduction_sum': int.tryParse(salaryRecord['deduction_sum']?.toString() ?? '0') ?? 0,
+            'salary_net': int.tryParse(salaryRecord['salary_net']?.toString() ?? '0') ?? 0,
+            'salary_status': salaryRecord['salary_status'] ?? '',
+            'business_income_tax': int.tryParse(salaryRecord['business_income_tax']?.toString() ?? '0') ?? 0,
+            'local_tax': int.tryParse(salaryRecord['local_tax']?.toString() ?? '0') ?? 0,
+            'income_tax': int.tryParse(salaryRecord['income_tax']?.toString() ?? '0') ?? 0,
+            'four_insure': int.tryParse(salaryRecord['four_insure']?.toString() ?? '0') ?? 0,
+            'other_deduction': int.tryParse(salaryRecord['other_deduction']?.toString() ?? '0') ?? 0,
+          });
+        } else {
+          // 데이터가 없는 경우 빈 레코드 추가 (해당 월에 급여 정산이 없음을 표시)
+          _monthlySalaryData.add({
+            'year': year,
+            'month': month,
+            'salary_base': 0,
+            'salary_hour': 0,
+            'salary_total': 0,
+            'deduction_sum': 0,
+            'salary_net': 0,
+            'salary_status': '미정산',
+            'business_income_tax': 0,
+            'local_tax': 0,
+            'income_tax': 0,
+            'four_insure': 0,
+            'other_deduction': 0,
+          });
         }
       } catch (e) {
         print('❌ ${year}년 ${month}월 급여 데이터 로드 실패: $e');
@@ -209,70 +185,56 @@ class _ManagerSalaryDialogState extends State<ManagerSalaryDialog> with SingleTi
         });
       }
     }
-    
+
     print('✅ 월별 급여 데이터 로드 완료 - ${_monthlySalaryData.length}개월');
   }
 
-  // 근무 스케줄 데이터 로드
+  // 근무 스케줄 데이터 로드 - Supabase
   Future<void> _loadWorkScheduleData() async {
     final branchId = ApiService.getCurrentBranchId();
     final firstDay = DateTime(widget.selectedMonth.year, widget.selectedMonth.month, 1);
     final lastDay = DateTime(widget.selectedMonth.year, widget.selectedMonth.month + 1, 0);
-    
+
     final firstDateStr = DateFormat('yyyy-MM-dd').format(firstDay);
     final lastDateStr = DateFormat('yyyy-MM-dd').format(lastDay);
 
-    final response = await http.post(
-      Uri.parse('https://autofms.mycafe24.com/dynamic_api.php'),
-      headers: {
-        'Content-Type': 'application/json',
-        'Accept': 'application/json',
-      },
-      body: json.encode({
-        'operation': 'get',
-        'table': 'v2_schedule_adjusted_manager',
-        'where': [
-          {'field': 'branch_id', 'operator': '=', 'value': branchId},
-          {'field': 'manager_name', 'operator': '=', 'value': widget.managerName},
-          {'field': 'scheduled_date', 'operator': '>=', 'value': firstDateStr},
-          {'field': 'scheduled_date', 'operator': '<=', 'value': lastDateStr},
-        ],
-        'orderBy': [
-          {'field': 'scheduled_date', 'direction': 'ASC'}
-        ],
-      }),
-    ).timeout(Duration(seconds: 15));
+    final scheduleData = await SupabaseAdapter.getData(
+      table: 'v2_schedule_adjusted_manager',
+      where: [
+        {'field': 'branch_id', 'operator': '=', 'value': branchId},
+        {'field': 'manager_name', 'operator': '=', 'value': widget.managerName},
+        {'field': 'scheduled_date', 'operator': '>=', 'value': firstDateStr},
+        {'field': 'scheduled_date', 'operator': '<=', 'value': lastDateStr},
+      ],
+      orderBy: [
+        {'field': 'scheduled_date', 'direction': 'ASC'}
+      ],
+    );
 
-    if (response.statusCode == 200) {
-      final result = json.decode(response.body);
-      if (result['success'] == true) {
-        final scheduleData = result['data'] as List;
-        _salaryData.clear();
-        
-        for (var schedule in scheduleData) {
-          final dateStr = schedule['scheduled_date'];
-          final isDayOff = schedule['is_day_off'] == '휴무';
-          
-          if (!isDayOff) {
-            final workStart = schedule['work_start'] ?? '';
-            final workEnd = schedule['work_end'] ?? '';
-            
-            if (workStart.isNotEmpty && workEnd.isNotEmpty) {
-              final workHours = _calculateWorkHours(workStart, workEnd);
-              
-              _salaryData.add({
-                'date': dateStr,
-                'workStart': workStart,
-                'workEnd': workEnd,
-                'workHours': workHours,
-              });
-            }
-          }
+    _salaryData.clear();
+
+    for (var schedule in scheduleData) {
+      final dateStr = schedule['scheduled_date'];
+      final isDayOff = schedule['is_day_off'] == '휴무';
+
+      if (!isDayOff) {
+        final workStart = schedule['work_start'] ?? '';
+        final workEnd = schedule['work_end'] ?? '';
+
+        if (workStart.isNotEmpty && workEnd.isNotEmpty) {
+          final workHours = _calculateWorkHours(workStart, workEnd);
+
+          _salaryData.add({
+            'date': dateStr,
+            'workStart': workStart,
+            'workEnd': workEnd,
+            'workHours': workHours,
+          });
         }
-        
-        print('✅ 근무 스케줄 데이터 로드 완료 - ${_salaryData.length}일 근무');
       }
     }
+
+    print('✅ 근무 스케줄 데이터 로드 완료 - ${_salaryData.length}일 근무');
   }
 
   // 근무시간 계산 (시간 단위로 반환)
@@ -1512,73 +1474,58 @@ class _ManagerSalaryDialogState extends State<ManagerSalaryDialog> with SingleTi
   // 급여정산확정 메서드
   Future<void> _confirmSalary() async {
     try {
-      // 현재 지점 ID 가져오기
-      final branchId = ApiService.getCurrentBranchId();
-      if (branchId == null) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('지점 정보를 찾을 수 없습니다.')),
-        );
-        return;
-      }
-
-      // 급여 정산 데이터 저장
-      final requestBody = {
-        'operation': 'upsert',
-        'table': 'v2_salary_manager',
-        'data': [
-          {
-            'branch_id': branchId,
-            'manager_id': widget.managerId.toString(),
-            'manager_name': widget.managerName,
-            'year': widget.selectedMonth.year.toString(),
-            'month': widget.selectedMonth.month.toString(),
-            'salary_status': '제출완료',
-            'salary_base': _baseSalary.toString(),
-            'salary_hour': (_totalHourlySalary + _totalMealAllowance).toString(),
-            'salary_total': _totalSalary.toString(),
-            'business_income_tax': _isFreelancer ? _tax1Amount.toString() : '0',
-            'local_tax': _isFreelancer ? _tax2Amount.toString() : '0',
-            'income_tax': _isFreelancer ? '0' : _tax1Amount.toString(),
-            'four_insure': _isFreelancer ? '0' : _tax2Amount.toString(),
-            'other_deduction': _otherDeductionAmount.toString(),
-            'deduction_sum': _totalDeduction.toString(),
-            'salary_net': _netSalary.toString(),
-          }
-        ],
-        'where': [
-          {'field': 'branch_id', 'operator': '=', 'value': branchId},
-          {'field': 'manager_id', 'operator': '=', 'value': widget.managerId.toString()},
-          {'field': 'year', 'operator': '=', 'value': widget.selectedMonth.year.toString()},
-          {'field': 'month', 'operator': '=', 'value': widget.selectedMonth.month.toString()},
-        ]
+      final salaryData = {
+        'manager_id': widget.managerId.toString(),
+        'manager_name': widget.managerName,
+        'year': widget.selectedMonth.year.toString(),
+        'month': widget.selectedMonth.month.toString(),
+        'salary_status': '제출완료',
+        'salary_base': _baseSalary.toString(),
+        'salary_hour': (_totalHourlySalary + _totalMealAllowance).toString(),
+        'salary_total': _totalSalary.toString(),
+        'business_income_tax': _isFreelancer ? _tax1Amount.toString() : '0',
+        'local_tax': _isFreelancer ? _tax2Amount.toString() : '0',
+        'income_tax': _isFreelancer ? '0' : _tax1Amount.toString(),
+        'four_insure': _isFreelancer ? '0' : _tax2Amount.toString(),
+        'other_deduction': _otherDeductionAmount.toString(),
+        'deduction_sum': _totalDeduction.toString(),
+        'salary_net': _netSalary.toString(),
       };
 
-      final response = await http.post(
-        Uri.parse(ApiService.baseUrl),
-        headers: ApiService.headers,
-        body: jsonEncode(requestBody),
+      final whereClause = [
+        {'field': 'manager_id', 'operator': '=', 'value': widget.managerId.toString()},
+        {'field': 'year', 'operator': '=', 'value': widget.selectedMonth.year.toString()},
+        {'field': 'month', 'operator': '=', 'value': widget.selectedMonth.month.toString()},
+      ];
+
+      // 기존 데이터 확인
+      final existing = await SupabaseAdapter.getData(
+        table: 'v2_salary_manager',
+        where: whereClause,
       );
 
-      if (response.statusCode == 200) {
-        final result = jsonDecode(utf8.decode(response.bodyBytes));
-        if (result['success'] == true) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('급여 정산이 성공적으로 제출되었습니다.'),
-              backgroundColor: Colors.green,
-            ),
-          );
-          Navigator.of(context).pop();
-        } else {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('급여 정산 저장에 실패했습니다.')),
-          );
-        }
+      if (existing.isNotEmpty) {
+        // 기존 데이터가 있으면 업데이트
+        await SupabaseAdapter.updateData(
+          table: 'v2_salary_manager',
+          data: salaryData,
+          where: whereClause,
+        );
       } else {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('서버 연결에 실패했습니다.')),
+        // 기존 데이터가 없으면 추가
+        await SupabaseAdapter.addData(
+          table: 'v2_salary_manager',
+          data: salaryData,
         );
       }
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('급여 정산이 성공적으로 제출되었습니다.'),
+          backgroundColor: Colors.green,
+        ),
+      );
+      Navigator.of(context).pop();
     } catch (e) {
       print('급여 정산 오류: $e');
       ScaffoldMessenger.of(context).showSnackBar(

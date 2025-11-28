@@ -1,8 +1,7 @@
 import 'package:flutter/material.dart';
 import '/services/api_service.dart';
+import '/services/supabase_adapter.dart';
 import '/constants/font_sizes.dart';
-import 'dart:convert';
-import 'package:http/http.dart' as http;
 
 // 타임라인 세션 데이터 클래스
 class TimelineSession {
@@ -45,45 +44,24 @@ class _ProgramViewerDialogState extends State<ProgramViewerDialog> {
         errorMessage = null;
       });
 
-      final response = await http.post(
-        Uri.parse('https://autofms.mycafe24.com/dynamic_api.php'),
-        headers: {
-          'Content-Type': 'application/json',
-          'Accept': 'application/json',
-        },
-        body: json.encode({
-          'operation': 'get',
-          'table': 'v2_base_option_setting',
-          'where': [
-            {'field': 'branch_id', 'operator': '=', 'value': ApiService.getCurrentBranchId()},
-            {'field': 'category', 'operator': '=', 'value': '특수타석예약'},
-            {'field': 'table_name', 'operator': '=', 'value': widget.programName},
-          ],
-          'orderBy': [
-            {'field': 'field_name', 'direction': 'ASC'}
-          ],
-        }),
-      ).timeout(Duration(seconds: 15));
+      final result = await SupabaseAdapter.getData(
+        table: 'v2_base_option_setting',
+        where: [
+          {'field': 'category', 'operator': '=', 'value': '특수타석예약'},
+          {'field': 'table_name', 'operator': '=', 'value': widget.programName},
+        ],
+        orderBy: [
+          {'field': 'field_name', 'direction': 'ASC'}
+        ],
+      );
 
-      if (response.statusCode == 200) {
-        final result = json.decode(response.body);
-        if (result['success'] == true) {
-          final data = result['data'] as List;
-          final settings = data.cast<Map<String, dynamic>>();
-          
-          // 프로그램 데이터 분석
-          final analyzedData = _analyzeProgramData(settings);
-          
-          setState(() {
-            programData = analyzedData;
-            isLoading = false;
-          });
-        } else {
-          throw Exception('프로그램 정보 조회 실패: ${result['error'] ?? '알 수 없는 오류'}');
-        }
-      } else {
-        throw Exception('프로그램 정보 조회 HTTP 오류: ${response.statusCode}');
-      }
+      // 프로그램 데이터 분석
+      final analyzedData = _analyzeProgramData(result);
+
+      setState(() {
+        programData = analyzedData;
+        isLoading = false;
+      });
     } catch (e) {
       setState(() {
         errorMessage = e.toString();

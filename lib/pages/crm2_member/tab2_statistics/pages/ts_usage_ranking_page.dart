@@ -1,10 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '/services/api_service.dart';
+import '/services/supabase_adapter.dart';
 import '/services/table_design.dart';
 import '/services/upper_button_input_design.dart';
-import 'package:http/http.dart' as http;
-import 'dart:convert';
 
 class TsUsageRankingPage extends StatefulWidget {
   const TsUsageRankingPage({super.key});
@@ -298,34 +297,18 @@ class _TsUsageRankingPageState extends State<TsUsageRankingPage> {
   // v2_eventhandicap_TS에서 결제방법 가져오기
   Future<Set<String>> _getHandicapPaymentMethods() async {
     try {
-      final branchId = ApiService.getCurrentBranchId() ?? 'test';
-      final response = await http.post(
-        Uri.parse('https://autofms.mycafe24.com/dynamic_api.php'),
-        headers: {
-          'Content-Type': 'application/json',
-          'Accept': 'application/json',
-        },
-        body: json.encode({
-          'operation': 'get',
-          'table': 'v2_eventhandicap_TS',
-          'fields': ['ts_payment_method'],
-          'where': [
-            {'field': 'branch_id', 'operator': '=', 'value': branchId},
-            {'field': 'ts_payment_method', 'operator': 'IS NOT', 'value': null},
-          ],
-        }),
+      final response = await SupabaseAdapter.getData(
+        table: 'v2_eventhandicap_TS',
+        fields: ['ts_payment_method'],
+        where: [
+          {'field': 'ts_payment_method', 'operator': 'IS NOT', 'value': null},
+        ],
       );
-      
+
       final methods = <String>{};
-      if (response.statusCode == 200) {
-        final responseData = json.decode(response.body);
-        if (responseData['success'] == true || responseData['status'] == 'success') {
-          final data = responseData['data'] ?? [];
-          for (var row in data) {
-            if (row['ts_payment_method'] != null && row['ts_payment_method'].toString().trim().isNotEmpty) {
-              methods.add(row['ts_payment_method'].toString().trim());
-            }
-          }
+      for (var row in response) {
+        if (row['ts_payment_method'] != null && row['ts_payment_method'].toString().trim().isNotEmpty) {
+          methods.add(row['ts_payment_method'].toString().trim());
         }
       }
       return methods;
@@ -338,45 +321,16 @@ class _TsUsageRankingPageState extends State<TsUsageRankingPage> {
   // v2_eventhandicap_TS 데이터 조회
   Future<List<Map<String, dynamic>>> _getHandicapData(List<Map<String, dynamic>> where) async {
     try {
-      final branchId = ApiService.getCurrentBranchId() ?? 'test';
-      final whereWithBranch = List<Map<String, dynamic>>.from(where)
-        ..add({'field': 'branch_id', 'operator': '=', 'value': branchId});
-      
-      final requestData = {
-        'operation': 'get',
-        'table': 'v2_eventhandicap_TS',
-        'fields': ['member_id', 'member_name', 'member_phone', 'member_type', 'ts_min'],
-        'where': whereWithBranch,
-      };
-      
-      print('핸디캡 API 요청 데이터: ${json.encode(requestData)}');
-      
-      final response = await http.post(
-        Uri.parse('https://autofms.mycafe24.com/dynamic_api.php'),
-        headers: {
-          'Content-Type': 'application/json',
-          'Accept': 'application/json',
-        },
-        body: json.encode(requestData),
+      print('핸디캡 API 요청 데이터: $where');
+
+      final response = await SupabaseAdapter.getData(
+        table: 'v2_eventhandicap_TS',
+        fields: ['member_id', 'member_name', 'member_phone', 'member_type', 'ts_min'],
+        where: where,
       );
-      
-      print('핸디캡 API 응답 상태: ${response.statusCode}');
-      print('핸디캡 API 응답 본문: ${response.body}');
-      
-      if (response.statusCode == 200) {
-        final responseData = json.decode(response.body);
-        print('핸디캡 응답 데이터 파싱: ${responseData}');
-        
-        // success 또는 status가 success인 경우 모두 확인
-        if (responseData['success'] == true || responseData['status'] == 'success') {
-          final data = responseData['data'] ?? [];
-          print('핸디캡 데이터 파싱 완료: ${data.length}건');
-          return List<Map<String, dynamic>>.from(data);
-        } else {
-          print('핸디캡 API 응답 실패: ${responseData}');
-        }
-      }
-      return [];
+
+      print('핸디캡 데이터 파싱 완료: ${response.length}건');
+      return response;
     } catch (e) {
       print('핸디캡 데이터 조회 오류: $e');
       return [];
@@ -1270,31 +1224,11 @@ class _TsUsageRankingPageState extends State<TsUsageRankingPage> {
           'memo': _eventContentController.text.trim(),
         };
         
-        // v2_eventhandicap_TS 테이블에 직접 저장
-        final branchId = ApiService.getCurrentBranchId() ?? 'test';
-        final dataWithBranch = Map<String, dynamic>.from(eventData)..['branch_id'] = branchId;
-        
-        final response = await http.post(
-          Uri.parse('https://autofms.mycafe24.com/dynamic_api.php'),
-          headers: {
-            'Content-Type': 'application/json',
-            'Accept': 'application/json',
-          },
-          body: json.encode({
-            'operation': 'add',
-            'table': 'v2_eventhandicap_TS',
-            'data': dataWithBranch,
-          }),
+        // v2_eventhandicap_TS 테이블에 저장
+        await SupabaseAdapter.addData(
+          table: 'v2_eventhandicap_TS',
+          data: eventData,
         );
-        
-        if (response.statusCode != 200) {
-          throw Exception('HTTP ${response.statusCode}: ${response.body}');
-        }
-        
-        final responseData = json.decode(response.body);
-        if (responseData['success'] != true) {
-          throw Exception(responseData['message'] ?? 'API 호출 실패');
-        }
       }
       
       if (mounted) {
@@ -1437,31 +1371,11 @@ class _TsUsageRankingPageState extends State<TsUsageRankingPage> {
       return;
     }
     try {
-      final branchId = ApiService.getCurrentBranchId() ?? 'test';
-      final response = await http.post(
-        Uri.parse('https://autofms.mycafe24.com/dynamic_api.php'),
-        headers: {
-          'Content-Type': 'application/json',
-          'Accept': 'application/json',
-        },
-        body: json.encode({
-          'operation': 'get',
-          'table': 'v2_eventhandicap_TS',
-          'fields': ['ts_date', 'ts_payment_method', 'ts_min', 'memo'],
-          'where': _buildHandicapWhereClause(memberId, branchId),
-        }),
+      final handicapData = await SupabaseAdapter.getData(
+        table: 'v2_eventhandicap_TS',
+        fields: ['ts_date', 'ts_payment_method', 'ts_min', 'memo'],
+        where: _buildHandicapWhereClause(memberId),
       );
-
-      if (response.statusCode != 200) {
-        throw Exception('HTTP ${response.statusCode}: ${response.body}');
-      }
-
-      final responseData = json.decode(response.body);
-      if (responseData['success'] != true) {
-        throw Exception(responseData['message'] ?? 'API 호출 실패');
-      }
-
-      final handicapData = responseData['data'] as List<dynamic>? ?? [];
 
       showDialog(
         context: context,
@@ -1556,13 +1470,12 @@ class _TsUsageRankingPageState extends State<TsUsageRankingPage> {
   }
 
   // 핸디캡 조회를 위한 where 절 구성
-  List<Map<String, dynamic>> _buildHandicapWhereClause(int memberId, String branchId) {
+  List<Map<String, dynamic>> _buildHandicapWhereClause(int memberId) {
     final where = <Map<String, dynamic>>[
       {'field': 'member_id', 'operator': '=', 'value': memberId},
       {'field': 'ts_status', 'operator': '=', 'value': '결제완료'},
       {'field': 'ts_date', 'operator': '>=', 'value': DateFormat('yyyy-MM-dd').format(_startDate)},
       {'field': 'ts_date', 'operator': '<=', 'value': DateFormat('yyyy-MM-dd').format(_endDate)},
-      {'field': 'branch_id', 'operator': '=', 'value': branchId},
     ];
 
     // 결제방법 필터 적용 (이벤트선정 차감, 이벤트선정 보너스는 항상 포함)

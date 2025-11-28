@@ -1,8 +1,7 @@
 import 'package:flutter/material.dart';
-import 'dart:convert';
 import 'dart:math';
-import 'package:http/http.dart' as http;
 import '../../../services/api_service.dart';
+import '../../../services/supabase_adapter.dart';
 import '/pages/crm5_hr/tab4_staff_pro_register/tab2_1_manager_contract.dart';
 import 'package:intl/intl.dart';
 import '../../../widgets/scroll_service.dart';
@@ -62,7 +61,7 @@ class _Tab2ManagerContractListWidgetState extends State<Tab2ManagerContractListW
     }
   }
 
-  // 직원 계약 리스트 로드 (직원별로 그룹화)
+  // 직원 계약 리스트 로드 (직원별로 그룹화) - Supabase
   Future<void> _loadManagerContractList() async {
     try {
       // 조회 조건 설정
@@ -70,60 +69,40 @@ class _Tab2ManagerContractListWidgetState extends State<Tab2ManagerContractListW
         {'field': 'branch_id', 'operator': '=', 'value': ApiService.getCurrentBranchId()},
         {'field': 'staff_type', 'operator': '=', 'value': '직원'},
       ];
-      
+
       // 퇴직 직원 포함하지 않는 경우에만 재직 조건 추가
       if (!_showRetiredManagers) {
         whereConditions.add({'field': 'staff_status', 'operator': '=', 'value': '재직'});
       }
-      
-      final response = await http.post(
-        Uri.parse('https://autofms.mycafe24.com/dynamic_api.php'),
-        headers: {
-          'Content-Type': 'application/json',
-          'Accept': 'application/json',
-        },
-        body: json.encode({
-          'operation': 'get',
-          'table': 'v2_staff_manager',
-          'where': whereConditions,
-          'orderBy': [
-            {'field': 'staff_status', 'direction': 'ASC'}, // 재직을 먼저 표시
-            {'field': 'manager_id', 'direction': 'ASC'},
-            {'field': 'manager_contract_round', 'direction': 'ASC'}
-          ],
-        }),
-      ).timeout(Duration(seconds: 15));
 
-      if (response.statusCode == 200) {
-        final result = json.decode(response.body);
-        if (result['success'] == true) {
-          final data = result['data'] as List;
-          final contractList = data.cast<Map<String, dynamic>>();
-          
-          // 직원별로 그룹화
-          Map<int, List<Map<String, dynamic>>> groupedData = {};
-          for (var contract in contractList) {
-            final managerId = contract['manager_id'] ?? 0;
-            if (managerId > 0) {
-              if (!groupedData.containsKey(managerId)) {
-                groupedData[managerId] = [];
-              }
-              groupedData[managerId]!.add(contract);
-            }
+      final contractList = await SupabaseAdapter.getData(
+        table: 'v2_staff_manager',
+        where: whereConditions,
+        orderBy: [
+          {'field': 'staff_status', 'direction': 'ASC'}, // 재직을 먼저 표시
+          {'field': 'manager_id', 'direction': 'ASC'},
+          {'field': 'manager_contract_round', 'direction': 'ASC'}
+        ],
+      );
+
+      // 직원별로 그룹화
+      Map<int, List<Map<String, dynamic>>> groupedData = {};
+      for (var contract in contractList) {
+        final managerId = contract['manager_id'] ?? 0;
+        if (managerId > 0) {
+          if (!groupedData.containsKey(managerId)) {
+            groupedData[managerId] = [];
           }
-          
-          setState(() {
-            _managerContractGroups = groupedData;
-          });
-          
-          final statusText = _showRetiredManagers ? '(퇴직 포함)' : '(재직만)';
-          print('✅ 직원 계약 리스트 로드 완료 $statusText: ${_managerContractGroups.length}개 직원, 총 ${contractList.length}개 계약');
-        } else {
-          throw Exception('직원 계약 리스트 조회 실패: ${result['error'] ?? '알 수 없는 오류'}');
+          groupedData[managerId]!.add(contract);
         }
-      } else {
-        throw Exception('직원 계약 리스트 조회 HTTP 오류: ${response.statusCode}');
       }
+
+      setState(() {
+        _managerContractGroups = groupedData;
+      });
+
+      final statusText = _showRetiredManagers ? '(퇴직 포함)' : '(재직만)';
+      print('✅ 직원 계약 리스트 로드 완료 $statusText: ${_managerContractGroups.length}개 직원, 총 ${contractList.length}개 계약');
     } catch (e) {
       print('❌ 직원 계약 리스트 로드 오류: $e');
       setState(() {
@@ -451,7 +430,7 @@ class _Tab2ManagerContractListWidgetState extends State<Tab2ManagerContractListW
     );
   }
 
-  // 퇴직 처리
+  // 퇴직 처리 - Supabase
   Future<void> _processRetirement(int managerId, List<Map<String, dynamic>> contracts, DateTime retirementDate) async {
     try {
       setState(() {
@@ -459,47 +438,30 @@ class _Tab2ManagerContractListWidgetState extends State<Tab2ManagerContractListW
       });
 
       final retirementDateStr = DateFormat('yyyy-MM-dd').format(retirementDate);
-      
+
       // 해당 직원의 모든 계약을 퇴직 상태로 업데이트
       for (var contract in contracts) {
         final contractId = contract['manager_contract_id'];
-        
-        final response = await http.post(
-          Uri.parse('https://autofms.mycafe24.com/dynamic_api.php'),
-          headers: {
-            'Content-Type': 'application/json',
-            'Accept': 'application/json',
+
+        await SupabaseAdapter.updateData(
+          table: 'v2_staff_manager',
+          where: [
+            {'field': 'manager_contract_id', 'operator': '=', 'value': contractId}
+          ],
+          data: {
+            'staff_status': '퇴직',
+            'manager_contract_status': '만료',
+            'manager_contract_enddate': retirementDateStr,
+            'updated_at': DateTime.now().toIso8601String(),
           },
-          body: json.encode({
-            'operation': 'update',
-            'table': 'v2_staff_manager',
-            'where': [
-              {'field': 'manager_contract_id', 'operator': '=', 'value': contractId}
-            ],
-            'data': {
-              'staff_status': '퇴직',
-              'manager_contract_status': '만료',
-              'manager_contract_enddate': retirementDateStr,
-              'updated_at': DateTime.now().toIso8601String(),
-            },
-          }),
-        ).timeout(Duration(seconds: 15));
-
-        if (response.statusCode != 200) {
-          throw Exception('퇴직 처리 HTTP 오류: ${response.statusCode}');
-        }
-
-        final result = json.decode(response.body);
-        if (result['success'] != true) {
-          throw Exception('퇴직 처리 실패: ${result['error'] ?? '알 수 없는 오류'}');
-        }
+        );
       }
 
       // 목록 새로고침
       await _loadManagerContractList();
-      
+
       _showSuccessSnackBar('퇴직 등록이 완료되었습니다.');
-      
+
     } catch (e) {
       print('❌ 퇴직 처리 오류: $e');
       _showErrorSnackBar('퇴직 등록에 실패했습니다: $e');

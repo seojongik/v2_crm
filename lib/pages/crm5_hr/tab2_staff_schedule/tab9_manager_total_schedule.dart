@@ -1,8 +1,7 @@
-import 'dart:convert';
 import 'package:flutter/material.dart';
-import 'package:http/http.dart' as http;
 import 'package:intl/intl.dart';
 import '/services/api_service.dart';
+import '/services/supabase_adapter.dart';
 
 class ManagerTotalScheduleDialog extends StatefulWidget {
   final DateTime selectedMonth;
@@ -77,95 +76,65 @@ class _ManagerTotalScheduleDialogState extends State<ManagerTotalScheduleDialog>
       final lastDateStr = '${lastDay.year}-${lastDay.month.toString().padLeft(2, '0')}-${lastDay.day.toString().padLeft(2, '0')}';
       
       
-      // 영업시간 로드
-      final businessResponse = await http.post(
-        Uri.parse('https://autofms.mycafe24.com/dynamic_api.php'),
-        headers: {
-          'Content-Type': 'application/json',
-          'Accept': 'application/json',
-        },
-        body: json.encode({
-          'operation': 'get',
-          'table': 'v2_schedule_adjusted_ts',
-          'where': [
-            {'field': 'branch_id', 'operator': '=', 'value': branchId},
-            {'field': 'ts_date', 'operator': '>=', 'value': firstDateStr},
-            {'field': 'ts_date', 'operator': '<=', 'value': lastDateStr},
-          ],
-          'orderBy': [
-            {'field': 'ts_date', 'direction': 'ASC'}
-          ],
-        }),
-      ).timeout(Duration(seconds: 15));
+      // 영업시간 로드 (Supabase)
+      final businessData = await SupabaseAdapter.getData(
+        table: 'v2_schedule_adjusted_ts',
+        where: [
+          {'field': 'branch_id', 'operator': '=', 'value': branchId},
+          {'field': 'ts_date', 'operator': '>=', 'value': firstDateStr},
+          {'field': 'ts_date', 'operator': '<=', 'value': lastDateStr},
+        ],
+        orderBy: [
+          {'field': 'ts_date', 'direction': 'ASC'}
+        ],
+      );
 
       Map<String, Map<String, dynamic>> businessHours = {};
-      if (businessResponse.statusCode == 200) {
-        final result = json.decode(businessResponse.body);
-        if (result['success'] == true) {
-          final businessData = result['data'] as List;
-          
-          for (var business in businessData) {
-            final dateStr = business['ts_date'];
-            final isHoliday = business['is_holiday'] == 'close';
-            final businessStart = business['business_start'] ?? '';
-            final businessEnd = business['business_end'] ?? '';
-            
-            businessHours[dateStr] = {
-              'isHoliday': isHoliday,
-              'businessStart': businessStart,
-              'businessEnd': businessEnd,
-            };
-          }
-        }
+      for (var business in businessData) {
+        final dateStr = business['ts_date'];
+        final isHoliday = business['is_holiday'] == 'close';
+        final businessStart = business['business_start'] ?? '';
+        final businessEnd = business['business_end'] ?? '';
+
+        businessHours[dateStr] = {
+          'isHoliday': isHoliday,
+          'businessStart': businessStart,
+          'businessEnd': businessEnd,
+        };
       }
 
-      // 직원 스케줄 로드
-      final scheduleResponse = await http.post(
-        Uri.parse('https://autofms.mycafe24.com/dynamic_api.php'),
-        headers: {
-          'Content-Type': 'application/json',
-          'Accept': 'application/json',
-        },
-        body: json.encode({
-          'operation': 'get',
-          'table': 'v2_schedule_adjusted_manager',
-          'where': [
-            {'field': 'branch_id', 'operator': '=', 'value': branchId},
-            {'field': 'scheduled_date', 'operator': '>=', 'value': firstDateStr},
-            {'field': 'scheduled_date', 'operator': '<=', 'value': lastDateStr},
-          ],
-          'orderBy': [
-            {'field': 'scheduled_date', 'direction': 'ASC'},
-            {'field': 'manager_name', 'direction': 'ASC'}
-          ],
-        }),
-      ).timeout(Duration(seconds: 15));
+      // 직원 스케줄 로드 (Supabase)
+      final scheduleData = await SupabaseAdapter.getData(
+        table: 'v2_schedule_adjusted_manager',
+        where: [
+          {'field': 'branch_id', 'operator': '=', 'value': branchId},
+          {'field': 'scheduled_date', 'operator': '>=', 'value': firstDateStr},
+          {'field': 'scheduled_date', 'operator': '<=', 'value': lastDateStr},
+        ],
+        orderBy: [
+          {'field': 'scheduled_date', 'direction': 'ASC'},
+          {'field': 'manager_name', 'direction': 'ASC'}
+        ],
+      );
 
       Map<String, List<Map<String, dynamic>>> allStaffSchedules = {};
-      if (scheduleResponse.statusCode == 200) {
-        final result = json.decode(scheduleResponse.body);
-        if (result['success'] == true) {
-          final scheduleData = result['data'] as List;
-          
-          for (var schedule in scheduleData) {
-            final dateStr = schedule['scheduled_date'];
-            final managerName = schedule['manager_name'];
-            final isDayOff = schedule['is_day_off'] == '휴무';
-            final workStart = schedule['work_start'] ?? '';
-            final workEnd = schedule['work_end'] ?? '';
-            
-            if (!allStaffSchedules.containsKey(dateStr)) {
-              allStaffSchedules[dateStr] = [];
-            }
-            
-            allStaffSchedules[dateStr]!.add({
-              'managerName': managerName,
-              'isDayOff': isDayOff,
-              'workStart': workStart,
-              'workEnd': workEnd,
-            });
-          }
+      for (var schedule in scheduleData) {
+        final dateStr = schedule['scheduled_date'];
+        final managerName = schedule['manager_name'];
+        final isDayOff = schedule['is_day_off'] == '휴무';
+        final workStart = schedule['work_start'] ?? '';
+        final workEnd = schedule['work_end'] ?? '';
+
+        if (!allStaffSchedules.containsKey(dateStr)) {
+          allStaffSchedules[dateStr] = [];
         }
+
+        allStaffSchedules[dateStr]!.add({
+          'managerName': managerName,
+          'isDayOff': isDayOff,
+          'workStart': workStart,
+          'workEnd': workEnd,
+        });
       }
 
       setState(() {
@@ -767,132 +736,102 @@ class _ManagerTotalScheduleDialogState extends State<ManagerTotalScheduleDialog>
 
 // 전체일정 조회 기능을 위한 헬퍼 클래스
 class TotalScheduleHelper {
-  // 영업시간 데이터 로드 (v2_schedule_adjusted_ts)
+  // 영업시간 데이터 로드 (v2_schedule_adjusted_ts) - Supabase
   static Future<Map<String, Map<String, dynamic>>> loadBusinessHours(DateTime selectedMonth) async {
     Map<String, Map<String, dynamic>> businessHours = {};
-    
+
     try {
       final branchId = ApiService.getCurrentBranchId();
-      
+
       final firstDay = DateTime(selectedMonth.year, selectedMonth.month, 1);
       final lastDay = DateTime(selectedMonth.year, selectedMonth.month + 1, 0);
-      
+
       final firstDateStr = '${firstDay.year}-${firstDay.month.toString().padLeft(2, '0')}-${firstDay.day.toString().padLeft(2, '0')}';
       final lastDateStr = '${lastDay.year}-${lastDay.month.toString().padLeft(2, '0')}-${lastDay.day.toString().padLeft(2, '0')}';
 
-      final response = await http.post(
-        Uri.parse('https://autofms.mycafe24.com/dynamic_api.php'),
-        headers: {
-          'Content-Type': 'application/json',
-          'Accept': 'application/json',
-        },
-        body: json.encode({
-          'operation': 'get',
-          'table': 'v2_schedule_adjusted_ts',
-          'where': [
-            {'field': 'branch_id', 'operator': '=', 'value': branchId},
-            {'field': 'ts_date', 'operator': '>=', 'value': firstDateStr},
-            {'field': 'ts_date', 'operator': '<=', 'value': lastDateStr},
-          ],
-          'orderBy': [
-            {'field': 'ts_date', 'direction': 'ASC'}
-          ],
-        }),
-      ).timeout(Duration(seconds: 15));
+      final businessData = await SupabaseAdapter.getData(
+        table: 'v2_schedule_adjusted_ts',
+        where: [
+          {'field': 'branch_id', 'operator': '=', 'value': branchId},
+          {'field': 'ts_date', 'operator': '>=', 'value': firstDateStr},
+          {'field': 'ts_date', 'operator': '<=', 'value': lastDateStr},
+        ],
+        orderBy: [
+          {'field': 'ts_date', 'direction': 'ASC'}
+        ],
+      );
 
-      if (response.statusCode == 200) {
-        final result = json.decode(response.body);
-        if (result['success'] == true) {
-          final businessData = result['data'] as List;
-          
-          for (var business in businessData) {
-            final dateStr = business['ts_date'];
-            final isHoliday = business['is_holiday'] == 'close';
-            final businessStart = business['business_start'] ?? '';
-            final businessEnd = business['business_end'] ?? '';
-            
-            businessHours[dateStr] = {
-              'isHoliday': isHoliday,
-              'businessStart': businessStart,
-              'businessEnd': businessEnd,
-            };
-          }
-        }
+      for (var business in businessData) {
+        final dateStr = business['ts_date'];
+        final isHoliday = business['is_holiday'] == 'close';
+        final businessStart = business['business_start'] ?? '';
+        final businessEnd = business['business_end'] ?? '';
+
+        businessHours[dateStr] = {
+          'isHoliday': isHoliday,
+          'businessStart': businessStart,
+          'businessEnd': businessEnd,
+        };
       }
-      
+
       print('✅ 영업시간 로드 완료');
     } catch (e) {
       print('❌ 영업시간 로드 실패: $e');
     }
-    
+
     return businessHours;
   }
 
-  // 모든 직원 스케줄 데이터 로드
+  // 모든 직원 스케줄 데이터 로드 - Supabase
   static Future<Map<String, List<Map<String, dynamic>>>> loadAllStaffSchedules(DateTime selectedMonth) async {
     Map<String, List<Map<String, dynamic>>> allStaffSchedules = {};
-    
+
     try {
       final branchId = ApiService.getCurrentBranchId();
-      
+
       final firstDay = DateTime(selectedMonth.year, selectedMonth.month, 1);
       final lastDay = DateTime(selectedMonth.year, selectedMonth.month + 1, 0);
-      
+
       final firstDateStr = '${firstDay.year}-${firstDay.month.toString().padLeft(2, '0')}-${firstDay.day.toString().padLeft(2, '0')}';
       final lastDateStr = '${lastDay.year}-${lastDay.month.toString().padLeft(2, '0')}-${lastDay.day.toString().padLeft(2, '0')}';
 
-      final response = await http.post(
-        Uri.parse('https://autofms.mycafe24.com/dynamic_api.php'),
-        headers: {
-          'Content-Type': 'application/json',
-          'Accept': 'application/json',
-        },
-        body: json.encode({
-          'operation': 'get',
-          'table': 'v2_schedule_adjusted_manager',
-          'where': [
-            {'field': 'branch_id', 'operator': '=', 'value': branchId},
-            {'field': 'scheduled_date', 'operator': '>=', 'value': firstDateStr},
-            {'field': 'scheduled_date', 'operator': '<=', 'value': lastDateStr},
-          ],
-          'orderBy': [
-            {'field': 'scheduled_date', 'direction': 'ASC'},
-            {'field': 'manager_name', 'direction': 'ASC'}
-          ],
-        }),
-      ).timeout(Duration(seconds: 15));
+      final scheduleData = await SupabaseAdapter.getData(
+        table: 'v2_schedule_adjusted_manager',
+        where: [
+          {'field': 'branch_id', 'operator': '=', 'value': branchId},
+          {'field': 'scheduled_date', 'operator': '>=', 'value': firstDateStr},
+          {'field': 'scheduled_date', 'operator': '<=', 'value': lastDateStr},
+        ],
+        orderBy: [
+          {'field': 'scheduled_date', 'direction': 'ASC'},
+          {'field': 'manager_name', 'direction': 'ASC'}
+        ],
+      );
 
-      if (response.statusCode == 200) {
-        final result = json.decode(response.body);
-        if (result['success'] == true) {
-          final scheduleData = result['data'] as List;
-          
-          for (var schedule in scheduleData) {
-            final dateStr = schedule['scheduled_date'];
-            final managerName = schedule['manager_name'];
-            final isDayOff = schedule['is_day_off'] == '휴무';
-            final workStart = schedule['work_start'] ?? '';
-            final workEnd = schedule['work_end'] ?? '';
-            
-            if (!allStaffSchedules.containsKey(dateStr)) {
-              allStaffSchedules[dateStr] = [];
-            }
-            
-            allStaffSchedules[dateStr]!.add({
-              'managerName': managerName,
-              'isDayOff': isDayOff,
-              'workStart': workStart,
-              'workEnd': workEnd,
-            });
-          }
+      for (var schedule in scheduleData) {
+        final dateStr = schedule['scheduled_date'];
+        final managerName = schedule['manager_name'];
+        final isDayOff = schedule['is_day_off'] == '휴무';
+        final workStart = schedule['work_start'] ?? '';
+        final workEnd = schedule['work_end'] ?? '';
+
+        if (!allStaffSchedules.containsKey(dateStr)) {
+          allStaffSchedules[dateStr] = [];
         }
+
+        allStaffSchedules[dateStr]!.add({
+          'managerName': managerName,
+          'isDayOff': isDayOff,
+          'workStart': workStart,
+          'workEnd': workEnd,
+        });
       }
-      
+
       print('✅ 모든 직원 스케줄 로드 완료 - ${allStaffSchedules.length}개 날짜');
     } catch (e) {
       print('❌ 모든 직원 스케줄 로드 실패: $e');
     }
-    
+
     return allStaffSchedules;
   }
 

@@ -20,9 +20,6 @@ class _Tab9ManagerHoursWidgetState extends State<Tab9ManagerHoursWidget> with Si
   DateTime _focusedDay = DateTime.now();
   DateTime _selectedDay = DateTime.now();
 
-  // API 기본 URL
-  static const String baseUrl = 'https://autofms.mycafe24.com';
-
   // 공휴일 데이터
   List<String> _holidays = [];
   bool _isLoadingHolidays = false;

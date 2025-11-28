@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:http/http.dart' as http;
-import 'dart:convert';
 import '/services/api_service.dart';
+import '/services/supabase_adapter.dart';
 import '/constants/font_sizes.dart';
 
 class Tab8JuniorWidget extends StatefulWidget {
@@ -35,39 +34,16 @@ class _Tab8JuniorWidgetState extends State<Tab8JuniorWidget> {
     });
 
     try {
-      final branchId = ApiService.getCurrentBranchId();
-      if (branchId == null) {
-        throw Exception('지점 정보가 없습니다.');
-      }
-
-      final response = await http.post(
-        Uri.parse('https://autofms.mycafe24.com/dynamic_api.php'),
-        headers: {
-          'Content-Type': 'application/json',
-          'Accept': 'application/json',
-        },
-        body: json.encode({
-          'operation': 'get',
-          'table': 'v2_group',
-          'where': [
-            {'field': 'branch_id', 'operator': '=', 'value': branchId},
-            {'field': 'member_id', 'operator': '=', 'value': widget.memberId},
-          ],
-        }),
+      final result = await SupabaseAdapter.getData(
+        table: 'v2_group',
+        where: [
+          {'field': 'member_id', 'operator': '=', 'value': widget.memberId},
+        ],
       );
 
-      if (response.statusCode == 200) {
-        final result = json.decode(response.body);
-        if (result['success'] == true) {
-          setState(() {
-            _relations = List<Map<String, dynamic>>.from(result['data'] ?? []);
-          });
-        } else {
-          throw Exception('관계 정보 조회 실패: ${result['error'] ?? '알 수 없는 오류'}');
-        }
-      } else {
-        throw Exception('HTTP 오류: ${response.statusCode}');
-      }
+      setState(() {
+        _relations = result;
+      });
     } catch (e) {
       setState(() {
         _errorMessage = e.toString();
@@ -93,33 +69,15 @@ class _Tab8JuniorWidgetState extends State<Tab8JuniorWidget> {
   // 관계 삭제
   Future<void> _deleteRelation(int relationId) async {
     try {
-      final response = await http.post(
-        Uri.parse('https://autofms.mycafe24.com/dynamic_api.php'),
-        headers: {
-          'Content-Type': 'application/json',
-          'Accept': 'application/json',
-        },
-        body: json.encode({
-          'operation': 'delete',
-          'table': 'v2_group',
-          'where': [
-            {'field': 'id', 'operator': '=', 'value': relationId},
-            {'field': 'branch_id', 'operator': '=', 'value': ApiService.getCurrentBranchId()},
-          ],
-        }),
+      await SupabaseAdapter.deleteData(
+        table: 'v2_group',
+        where: [
+          {'field': 'id', 'operator': '=', 'value': relationId},
+        ],
       );
 
-      if (response.statusCode == 200) {
-        final result = json.decode(response.body);
-        if (result['success'] == true) {
-          _loadRelations();
-          _showSnackBar('관계가 삭제되었습니다.', Colors.green);
-        } else {
-          throw Exception('관계 삭제 실패: ${result['error'] ?? '알 수 없는 오류'}');
-        }
-      } else {
-        throw Exception('HTTP 오류: ${response.statusCode}');
-      }
+      _loadRelations();
+      _showSnackBar('관계가 삭제되었습니다.', Colors.green);
     } catch (e) {
       _showSnackBar('관계 삭제 중 오류가 발생했습니다: $e', Colors.red);
     }
@@ -636,33 +594,18 @@ class _AddRelationDialogState extends State<_AddRelationDialog> {
 
   Future<void> _loadCurrentMember() async {
     try {
-      final branchId = ApiService.getCurrentBranchId();
-      if (branchId == null) return;
-
-      final response = await http.post(
-        Uri.parse('https://autofms.mycafe24.com/dynamic_api.php'),
-        headers: {
-          'Content-Type': 'application/json',
-          'Accept': 'application/json',
-        },
-        body: json.encode({
-          'operation': 'get',
-          'table': 'v3_members',
-          'fields': ['member_id', 'member_name', 'member_phone', 'member_type'],
-          'where': [
-            {'field': 'branch_id', 'operator': '=', 'value': branchId},
-            {'field': 'member_id', 'operator': '=', 'value': widget.memberId},
-          ],
-        }),
+      final result = await SupabaseAdapter.getData(
+        table: 'v3_members',
+        fields: ['member_id', 'member_name', 'member_phone', 'member_type'],
+        where: [
+          {'field': 'member_id', 'operator': '=', 'value': widget.memberId},
+        ],
       );
 
-      if (response.statusCode == 200) {
-        final result = json.decode(response.body);
-        if (result['success'] == true && result['data'].isNotEmpty) {
-          setState(() {
-            _currentMember = result['data'][0];
-          });
-        }
+      if (result.isNotEmpty) {
+        setState(() {
+          _currentMember = result[0];
+        });
       }
     } catch (e) {
       print('현재 회원 정보 로드 오류: $e');
@@ -689,55 +632,32 @@ class _AddRelationDialogState extends State<_AddRelationDialog> {
     });
 
     try {
-      final branchId = ApiService.getCurrentBranchId();
-      if (branchId == null) {
-        throw Exception('지점 정보가 없습니다.');
-      }
-
       final phoneSearchText = searchText.replaceAll('-', '');
 
-      final response = await http.post(
-        Uri.parse('https://autofms.mycafe24.com/dynamic_api.php'),
-        headers: {
-          'Content-Type': 'application/json',
-          'Accept': 'application/json',
-        },
-        body: json.encode({
-          'operation': 'get',
-          'table': 'v3_members',
-          'fields': ['member_id', 'member_name', 'member_phone', 'member_type'],
-          'where': [
-            {'field': 'branch_id', 'operator': '=', 'value': branchId},
-          ],
-          'limit': 50,
-        }),
+      final result = await SupabaseAdapter.getData(
+        table: 'v3_members',
+        fields: ['member_id', 'member_name', 'member_phone', 'member_type'],
+        limit: 50,
       );
 
-      if (response.statusCode == 200) {
-        final result = json.decode(response.body);
-        if (result['success'] == true) {
-          final allMembers = List<Map<String, dynamic>>.from(result['data'] ?? []);
-          
-          // 클라이언트 사이드에서 이름 또는 전화번호로 필터링
-          final filteredMembers = allMembers.where((member) {
-            // 자기 자신 제외
-            if (member['member_id'] == widget.memberId) {
-              return false;
-            }
-            
-            final memberName = (member['member_name'] ?? '').toString().toLowerCase();
-            final memberPhone = (member['member_phone'] ?? '').toString().replaceAll('-', '');
-            final searchLower = searchText.toLowerCase();
-            
-            return memberName.contains(searchLower) || 
-                   memberPhone.contains(phoneSearchText);
-          }).toList();
-          
-          setState(() {
-            _searchResults = filteredMembers;
-          });
+      // 클라이언트 사이드에서 이름 또는 전화번호로 필터링
+      final filteredMembers = result.where((member) {
+        // 자기 자신 제외
+        if (member['member_id'] == widget.memberId) {
+          return false;
         }
-      }
+
+        final memberName = (member['member_name'] ?? '').toString().toLowerCase();
+        final memberPhone = (member['member_phone'] ?? '').toString().replaceAll('-', '');
+        final searchLower = searchText.toLowerCase();
+
+        return memberName.contains(searchLower) ||
+            memberPhone.contains(phoneSearchText);
+      }).toList();
+
+      setState(() {
+        _searchResults = filteredMembers;
+      });
     } catch (e) {
       print('검색 오류: $e');
       setState(() {
@@ -762,17 +682,11 @@ class _AddRelationDialogState extends State<_AddRelationDialog> {
     }
 
     try {
-      final branchId = ApiService.getCurrentBranchId();
-      if (branchId == null) {
-        throw Exception('지점 정보가 없습니다.');
-      }
-      
       // 역관계 매핑
       String reverseRelation = _getReverseRelation(_selectedRelation);
 
       // 첫 번째 관계 추가 (현재 회원 -> 선택된 회원)
       final relation1 = {
-        'branch_id': branchId,
         'member_id': widget.memberId,
         'member_name': _currentMember!['member_name'],
         'member_phone': _currentMember!['member_phone'],
@@ -787,7 +701,6 @@ class _AddRelationDialogState extends State<_AddRelationDialog> {
 
       // 두 번째 관계 추가 (선택된 회원 -> 현재 회원)
       final relation2 = {
-        'branch_id': branchId,
         'member_id': _selectedMember!['member_id'],
         'member_name': _selectedMember!['member_name'],
         'member_phone': _selectedMember!['member_phone'],
@@ -801,50 +714,16 @@ class _AddRelationDialogState extends State<_AddRelationDialog> {
       };
 
       // 첫 번째 관계 저장
-      final response1 = await http.post(
-        Uri.parse('https://autofms.mycafe24.com/dynamic_api.php'),
-        headers: {
-          'Content-Type': 'application/json',
-          'Accept': 'application/json',
-        },
-        body: json.encode({
-          'operation': 'add',
-          'table': 'v2_group',
-          'data': relation1,
-        }),
+      await SupabaseAdapter.addData(
+        table: 'v2_group',
+        data: relation1,
       );
-
-      if (response1.statusCode != 200) {
-        throw Exception('첫 번째 관계 저장 실패');
-      }
-
-      final result1 = json.decode(response1.body);
-      if (result1['success'] != true) {
-        throw Exception('첫 번째 관계 저장 실패: ${result1['error']}');
-      }
 
       // 두 번째 관계 저장
-      final response2 = await http.post(
-        Uri.parse('https://autofms.mycafe24.com/dynamic_api.php'),
-        headers: {
-          'Content-Type': 'application/json',
-          'Accept': 'application/json',
-        },
-        body: json.encode({
-          'operation': 'add',
-          'table': 'v2_group',
-          'data': relation2,
-        }),
+      await SupabaseAdapter.addData(
+        table: 'v2_group',
+        data: relation2,
       );
-
-      if (response2.statusCode != 200) {
-        throw Exception('두 번째 관계 저장 실패');
-      }
-
-      final result2 = json.decode(response2.body);
-      if (result2['success'] != true) {
-        throw Exception('두 번째 관계 저장 실패: ${result2['error']}');
-      }
 
       Navigator.of(context).pop();
       widget.onRelationAdded();

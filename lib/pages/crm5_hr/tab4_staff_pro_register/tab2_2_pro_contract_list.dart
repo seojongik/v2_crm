@@ -1,8 +1,7 @@
 import 'package:flutter/material.dart';
-import 'dart:convert';
 import 'dart:math';
-import 'package:http/http.dart' as http;
 import '../../../services/api_service.dart';
+import '../../../services/supabase_adapter.dart';
 import '/pages/crm5_hr/tab4_staff_pro_register/tab2_2_pro_contract.dart';
 import 'package:intl/intl.dart';
 import '../../../widgets/scroll_service.dart';
@@ -71,7 +70,7 @@ class _Tab2ProContractListWidgetState extends State<Tab2ProContractListWidget> {
     }
   }
 
-  // 프로 계약 리스트 로드 (프로별로 그룹화)
+  // 프로 계약 리스트 로드 (프로별로 그룹화) - Supabase
   Future<void> _loadProContractList() async {
     try {
       // 조회 조건 설정
@@ -79,60 +78,40 @@ class _Tab2ProContractListWidgetState extends State<Tab2ProContractListWidget> {
         {'field': 'branch_id', 'operator': '=', 'value': ApiService.getCurrentBranchId()},
         {'field': 'staff_type', 'operator': '=', 'value': '프로'},
       ];
-      
+
       // 퇴직 프로 포함하지 않는 경우에만 재직 조건 추가
       if (!_showRetiredPros) {
         whereConditions.add({'field': 'staff_status', 'operator': '=', 'value': '재직'});
       }
-      
-      final response = await http.post(
-        Uri.parse('https://autofms.mycafe24.com/dynamic_api.php'),
-        headers: {
-          'Content-Type': 'application/json',
-          'Accept': 'application/json',
-        },
-        body: json.encode({
-          'operation': 'get',
-          'table': 'v2_staff_pro',
-          'where': whereConditions,
-          'orderBy': [
-            {'field': 'staff_status', 'direction': 'ASC'}, // 재직을 먼저 표시
-            {'field': 'pro_id', 'direction': 'ASC'},
-            {'field': 'pro_contract_round', 'direction': 'ASC'}
-          ],
-        }),
-      ).timeout(Duration(seconds: 15));
 
-      if (response.statusCode == 200) {
-        final result = json.decode(response.body);
-        if (result['success'] == true) {
-          final data = result['data'] as List;
-          final contractList = data.cast<Map<String, dynamic>>();
-          
-          // 프로별로 그룹화
-          Map<int, List<Map<String, dynamic>>> groupedData = {};
-          for (var contract in contractList) {
-            final proId = contract['pro_id'] ?? 0;
-            if (proId > 0) {
-              if (!groupedData.containsKey(proId)) {
-                groupedData[proId] = [];
-              }
-              groupedData[proId]!.add(contract);
-            }
+      final contractList = await SupabaseAdapter.getData(
+        table: 'v2_staff_pro',
+        where: whereConditions,
+        orderBy: [
+          {'field': 'staff_status', 'direction': 'ASC'}, // 재직을 먼저 표시
+          {'field': 'pro_id', 'direction': 'ASC'},
+          {'field': 'pro_contract_round', 'direction': 'ASC'}
+        ],
+      );
+
+      // 프로별로 그룹화
+      Map<int, List<Map<String, dynamic>>> groupedData = {};
+      for (var contract in contractList) {
+        final proId = contract['pro_id'] ?? 0;
+        if (proId > 0) {
+          if (!groupedData.containsKey(proId)) {
+            groupedData[proId] = [];
           }
-          
-          setState(() {
-            _proContractGroups = groupedData;
-          });
-          
-          final statusText = _showRetiredPros ? '(퇴직 포함)' : '(재직만)';
-          print('✅ 프로 계약 리스트 로드 완료 $statusText: ${_proContractGroups.length}개 프로, 총 ${contractList.length}개 계약');
-        } else {
-          throw Exception('프로 계약 리스트 조회 실패: ${result['error'] ?? '알 수 없는 오류'}');
+          groupedData[proId]!.add(contract);
         }
-      } else {
-        throw Exception('프로 계약 리스트 조회 HTTP 오류: ${response.statusCode}');
       }
+
+      setState(() {
+        _proContractGroups = groupedData;
+      });
+
+      final statusText = _showRetiredPros ? '(퇴직 포함)' : '(재직만)';
+      print('✅ 프로 계약 리스트 로드 완료 $statusText: ${_proContractGroups.length}개 프로, 총 ${contractList.length}개 계약');
     } catch (e) {
       print('❌ 프로 계약 리스트 로드 오류: $e');
       setState(() {
@@ -461,7 +440,7 @@ class _Tab2ProContractListWidgetState extends State<Tab2ProContractListWidget> {
     );
   }
 
-  // 퇴직 처리
+  // 퇴직 처리 - Supabase
   Future<void> _processRetirement(int proId, List<Map<String, dynamic>> contracts, DateTime retirementDate) async {
     try {
       setState(() {
@@ -469,47 +448,30 @@ class _Tab2ProContractListWidgetState extends State<Tab2ProContractListWidget> {
       });
 
       final retirementDateStr = DateFormat('yyyy-MM-dd').format(retirementDate);
-      
+
       // 해당 프로의 모든 계약을 퇴직 상태로 업데이트
       for (var contract in contracts) {
         final contractId = contract['pro_contract_id'];
-        
-        final response = await http.post(
-          Uri.parse('https://autofms.mycafe24.com/dynamic_api.php'),
-          headers: {
-            'Content-Type': 'application/json',
-            'Accept': 'application/json',
+
+        await SupabaseAdapter.updateData(
+          table: 'v2_staff_pro',
+          where: [
+            {'field': 'pro_contract_id', 'operator': '=', 'value': contractId}
+          ],
+          data: {
+            'staff_status': '퇴직',
+            'pro_contract_status': '만료',
+            'pro_contract_enddate': retirementDateStr,
+            'updated_at': DateTime.now().toIso8601String(),
           },
-          body: json.encode({
-            'operation': 'update',
-            'table': 'v2_staff_pro',
-            'where': [
-              {'field': 'pro_contract_id', 'operator': '=', 'value': contractId}
-            ],
-            'data': {
-              'staff_status': '퇴직',
-              'pro_contract_status': '만료',
-              'pro_contract_enddate': retirementDateStr,
-              'updated_at': DateTime.now().toIso8601String(),
-            },
-          }),
-        ).timeout(Duration(seconds: 15));
-
-        if (response.statusCode != 200) {
-          throw Exception('퇴직 처리 HTTP 오류: ${response.statusCode}');
-        }
-
-        final result = json.decode(response.body);
-        if (result['success'] != true) {
-          throw Exception('퇴직 처리 실패: ${result['error'] ?? '알 수 없는 오류'}');
-        }
+        );
       }
 
       // 목록 새로고침
       await _loadProContractList();
-      
+
       _showSuccessSnackBar('퇴직 등록이 완료되었습니다.');
-      
+
     } catch (e) {
       print('❌ 퇴직 처리 오류: $e');
       _showErrorSnackBar('퇴직 등록에 실패했습니다: $e');
