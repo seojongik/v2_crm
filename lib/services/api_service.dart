@@ -36,6 +36,9 @@ class ApiService {
     _currentBranch = branchData;
     print('🏢 지점 설정 완료: $branchId');
     
+    // SupabaseAdapter에 branch_id 설정 (보안 강화)
+    SupabaseAdapter.setBranchId(branchId);
+    
     // ChatNotificationService에 구독 설정 알림
     try {
       final chatNotificationService = ChatNotificationService();
@@ -153,6 +156,9 @@ class ApiService {
     _currentStaffAccessId = null;
     _currentStaffRole = null;
     _currentAccessSettings = null;
+    
+    // SupabaseAdapter의 branch_id도 초기화 (보안 강화)
+    SupabaseAdapter.setBranchId(null);
   }
 
   // API 호출 전 공통 처리 (세션 갱신)
@@ -1338,7 +1344,7 @@ class ApiService {
   }
 
   // 주니어 관계 데이터 조회
-  // v2_junior_relation 주니어 관계 조회 - Supabase 전용
+  // v2_group 테이블에서 주니어 관계 조회 - Supabase 전용
   static Future<List<Map<String, dynamic>>> getJuniorRelations({
     List<String>? fields,
     List<Map<String, dynamic>>? where,
@@ -1346,7 +1352,17 @@ class ApiService {
     int? limit,
     int? offset,
   }) async {
-    return await _getDataRaw(table: 'v2_junior_relation', fields: fields, where: where, orderBy: orderBy, limit: limit, offset: offset);
+    // v2_group 테이블에서 member_type이 '주니어'인 관계만 조회
+    List<Map<String, dynamic>> combinedWhere = [
+      {'field': 'member_type', 'operator': '=', 'value': '주니어'},
+    ];
+    
+    if (where != null && where.isNotEmpty) {
+      combinedWhere.addAll(where);
+    }
+    
+    final filteredWhere = _addBranchFilter(combinedWhere, 'v2_group');
+    return await _getDataRaw(table: 'v2_group', fields: fields, where: filteredWhere, orderBy: orderBy, limit: limit, offset: offset);
   }
 
   // 관계가 있는 회원 ID 목록 조회 - Supabase 전용
@@ -2365,6 +2381,29 @@ class ApiService {
           // PasswordService로 비밀번호 검증
           print('🔐 Pro 비밀번호 검증 시작 (branch: ${userData['branch_id']})...');
           if (PasswordService.verifyPassword(staffPassword, storedPassword)) {
+            // 자동 마이그레이션: 기존 SHA-256 또는 평문 비밀번호를 bcrypt로 변환
+            final hashType = PasswordService.getHashType(storedPassword);
+            if (hashType != 'bcrypt') {
+              print('🔄 비밀번호 자동 마이그레이션 (${hashType} → bcrypt)');
+              try {
+                final bcryptHash = PasswordService.hashPassword(staffPassword);
+                final proId = userData['pro_id']?.toString();
+                if (proId != null) {
+                  await updateData(
+                    table: 'v2_staff_pro',
+                    data: {'staff_access_password': bcryptHash},
+                    where: [
+                      {'field': 'pro_id', 'operator': '=', 'value': proId},
+                    ],
+                  );
+                  userData['staff_access_password'] = bcryptHash;
+                  print('✅ 비밀번호 bcrypt로 마이그레이션 완료');
+                }
+              } catch (e) {
+                print('⚠️ 비밀번호 마이그레이션 실패 (계속 진행): $e');
+              }
+            }
+            
             userData['role'] = 'pro';
             print('✅ Pro로 인증 성공!');
             print('  - pro_name: ${userData['pro_name']}');
@@ -2407,6 +2446,29 @@ class ApiService {
           // PasswordService로 비밀번호 검증
           print('🔐 Manager 비밀번호 검증 시작 (branch: ${userData['branch_id']})...');
           if (PasswordService.verifyPassword(staffPassword, storedPassword)) {
+            // 자동 마이그레이션: 기존 SHA-256 또는 평문 비밀번호를 bcrypt로 변환
+            final hashType = PasswordService.getHashType(storedPassword);
+            if (hashType != 'bcrypt') {
+              print('🔄 비밀번호 자동 마이그레이션 (${hashType} → bcrypt)');
+              try {
+                final bcryptHash = PasswordService.hashPassword(staffPassword);
+                final managerId = userData['manager_id']?.toString();
+                if (managerId != null) {
+                  await updateData(
+                    table: 'v2_staff_manager',
+                    data: {'staff_access_password': bcryptHash},
+                    where: [
+                      {'field': 'manager_id', 'operator': '=', 'value': managerId},
+                    ],
+                  );
+                  userData['staff_access_password'] = bcryptHash;
+                  print('✅ 비밀번호 bcrypt로 마이그레이션 완료');
+                }
+              } catch (e) {
+                print('⚠️ 비밀번호 마이그레이션 실패 (계속 진행): $e');
+              }
+            }
+            
             userData['role'] = 'manager';
             print('✅ Manager로 인증 성공!');
             print('  - manager_name: ${userData['manager_name']}');

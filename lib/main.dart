@@ -7,6 +7,7 @@ import 'backend/firebase/firebase_config.dart';
 import 'services/chat_notification_service.dart';
 import 'services/session_manager.dart';
 import 'services/supabase_adapter.dart';
+import 'services/config_service.dart';
 import 'widgets/activity_detector.dart';
 import 'pages/access_selection_page.dart';
 import 'utils/access_selection_helper.dart';
@@ -14,6 +15,10 @@ import 'index.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  
+  // 설정 파일 초기화 (루트의 .env.local.json에서 읽기)
+  await ConfigService.initialize();
+  print('⚙️ 설정 파일 초기화 완료');
   
   // Firebase 초기화
   await initFirebase();

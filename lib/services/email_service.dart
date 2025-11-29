@@ -2,13 +2,29 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:mailer/mailer.dart';
 import 'package:mailer/smtp_server.dart';
+import 'config_service.dart';
 
 class EmailService {
-  // SMTP 서버 설정 (Gmail)
-  static const String _smtpHost = 'smtp.gmail.com';
-  static const int _smtpPort = 587;
-  static const String _username = 'auto.enables@gmail.com';
-  static const String _password = 'a131150*';
+  // SMTP 서버 설정 (설정 파일에서 읽기)
+  static String get _smtpHost {
+    final config = ConfigService.getSmtpConfig();
+    return config['host'] as String? ?? 'smtp.gmail.com';
+  }
+  
+  static int get _smtpPort {
+    final config = ConfigService.getSmtpConfig();
+    return config['port'] as int? ?? 587;
+  }
+  
+  static String get _username {
+    final config = ConfigService.getSmtpConfig();
+    return config['username'] as String? ?? 'auto.enables@gmail.com';
+  }
+  
+  static String get _password {
+    final config = ConfigService.getSmtpConfig();
+    return config['password'] as String? ?? 'a131150*';
+  }
   
   // 실제 이메일 발송 서비스 설정 (API 방식)
   static const String _emailEndpoint = 'https://your-email-api.com/send';

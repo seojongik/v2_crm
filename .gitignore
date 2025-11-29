@@ -286,3 +286,4 @@ dist/
 config.json
 secrets.json
 .DS_Store
+config.json

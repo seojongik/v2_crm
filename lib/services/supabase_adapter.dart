@@ -9,16 +9,41 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 /// 1. operation → Supabase 메서드 매핑
 /// 2. where 조건 → .eq(), .gt(), .ilike() 등으로 변환
 /// 3. PostgreSQL 응답 → 앱이 기대하는 형식으로 변환
+import 'config_service.dart';
+
 class SupabaseAdapter {
-  // Supabase 설정 (myxplanner와 동일한 프로젝트 사용)
-  static const String supabaseUrl = 'https://yejialakeivdhwntmagf.supabase.co';
-  static const String supabaseAnonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InllamlhbGFrZWl2ZGh3bnRtYWdmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjM5MTE0MjcsImV4cCI6MjA3OTQ4NzQyN30.a1WA6V7pD2tss1pkh1OSJcuknt6FTyeabvm9UzNjcfs';
+  // Supabase 설정 (설정 파일에서 읽기)
+  static String get supabaseUrl {
+    final config = ConfigService.getSupabaseConfig();
+    return config['url'] as String? ?? 'https://yejialakeivdhwntmagf.supabase.co';
+  }
+  
+  static String get supabaseAnonKey {
+    final config = ConfigService.getSupabaseConfig();
+    return config['anonKey'] as String? ?? 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InllamlhbGFrZWl2ZGh3bnRtYWdmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjM5MTE0MjcsImV4cCI6MjA3OTQ4NzQyN30.a1WA6V7pD2tss1pkh1OSJcuknt6FTyeabvm9UzNjcfs';
+  }
   
   static SupabaseClient? _client;
   static bool _initialized = false;
   
   // Supabase 사용 여부 플래그 (전환 시 사용)
   static bool useSupabase = true;
+  
+  // 현재 지점 ID (보안 강화: 모든 쿼리에 branch_id 필터 강제)
+  static String? _currentBranchId;
+  
+  /// 현재 지점 ID 설정 (ApiService.setCurrentBranch()에서 호출)
+  static void setBranchId(String? branchId) {
+    _currentBranchId = branchId;
+    if (branchId != null) {
+      print('🔒 [CRM] SupabaseAdapter branch_id 설정: $branchId');
+    }
+  }
+  
+  /// 현재 지점 ID 가져오기
+  static String? getBranchId() {
+    return _currentBranchId;
+  }
   
   /// Supabase 초기화
   static Future<void> initialize() async {
@@ -57,6 +82,53 @@ class SupabaseAdapter {
     return tableMapping[table] ?? table;
   }
   
+  // branch_id 필터링이 필요 없는 테이블 목록
+  static const Set<String> _excludedBranchFilterTables = {
+    'v2_branch',
+    'staff',
+    'v2_staff_pro',
+    'v2_staff_manager',
+  };
+  
+  /// branch_id 필터 강제 추가 (보안 강화)
+  static List<Map<String, dynamic>> _enforceBranchFilter(
+    List<Map<String, dynamic>>? where,
+    String tableName,
+  ) {
+    final lowerTableName = tableName.toLowerCase();
+    
+    // 제외 테이블 체크
+    if (_excludedBranchFilterTables.contains(lowerTableName) ||
+        _excludedBranchFilterTables.contains(tableName)) {
+      return where ?? [];
+    }
+    
+    // branch_id 가져오기
+    final branchId = _currentBranchId;
+    if (branchId == null) {
+      throw Exception('보안 오류: 지점 정보가 설정되지 않았습니다. 로그인 후 다시 시도하세요.');
+    }
+    
+    // 이미 branch_id 조건이 있는지 확인
+    final hasBranchCondition = (where ?? []).any((condition) {
+      final field = (condition['field'] as String?)?.toLowerCase();
+      return field == 'branch_id';
+    });
+    
+    if (hasBranchCondition) {
+      return where ?? [];
+    }
+    
+    // branch_id 필터 강제 추가
+    final branchCondition = {
+      'field': 'branch_id',
+      'operator': '=',
+      'value': branchId,
+    };
+    
+    return [...(where ?? []), branchCondition];
+  }
+  
   static Future<List<Map<String, dynamic>>> getData({
     required String table,
     List<String>? fields,
@@ -79,16 +151,19 @@ class SupabaseAdapter {
       // 2. 기본 쿼리 생성 (dynamic 타입으로 체이닝)
       dynamic query = client.from(tableName).select(selectFields);
       
-      // 3. WHERE 조건 적용 (컬럼명 소문자 변환)
-      if (where != null && where.isNotEmpty) {
-        final lowerWhere = where.map((w) => <String, dynamic>{
+      // 3. 보안 강화: branch_id 필터 강제 추가
+      final enforcedWhere = _enforceBranchFilter(where, tableName);
+      
+      // 4. WHERE 조건 적용 (컬럼명 소문자 변환)
+      if (enforcedWhere.isNotEmpty) {
+        final lowerWhere = enforcedWhere.map((w) => <String, dynamic>{
           ...w,
           'field': (w['field'] as String?)?.toLowerCase(),
         }).toList();
         query = _applyWhereConditions(query, lowerWhere);
       }
       
-      // 4. ORDER BY 적용 (컬럼명 소문자 변환)
+      // 5. ORDER BY 적용 (컬럼명 소문자 변환)
       if (orderBy != null && orderBy.isNotEmpty) {
         for (final order in orderBy) {
           final field = (order['field'] as String?)?.toLowerCase();
@@ -99,7 +174,7 @@ class SupabaseAdapter {
         }
       }
       
-      // 5. LIMIT & OFFSET 적용
+      // 6. LIMIT & OFFSET 적용
       if (limit != null) {
         query = query.limit(limit);
       }
@@ -107,10 +182,10 @@ class SupabaseAdapter {
         query = query.range(offset, offset + (limit ?? 100) - 1);
       }
       
-      // 6. 쿼리 실행
+      // 7. 쿼리 실행
       final response = await query;
       
-      // 7. 응답 변환 (PostgreSQL → 앱 형식)
+      // 8. 응답 변환 (PostgreSQL → 앱 형식)
       final List<Map<String, dynamic>> result = 
           List<Map<String, dynamic>>.from(response);
       
@@ -164,8 +239,11 @@ class SupabaseAdapter {
       // 테이블명 매핑 (legacy → v2) + 소문자 변환
       final tableName = _mapTableName(table).toLowerCase();
       
+      // 보안 강화: branch_id 자동 추가 (제외 테이블 제외)
+      final finalData = _enforceBranchInData(data, tableName);
+      
       // 데이터 변환 (앱 형식 → PostgreSQL)
-      final convertedData = _convertInputData(data);
+      final convertedData = _convertInputData(finalData);
       
       // 해당 테이블의 자동 증가 컬럼 목록 조회
       final autoIncrementCols = _tableAutoIncrementColumns[tableName] ?? [];
@@ -250,6 +328,9 @@ class SupabaseAdapter {
         throw Exception('업데이트 조건이 지정되지 않았습니다.');
       }
       
+      // 보안 강화: branch_id 필터 강제 추가
+      final enforcedWhere = _enforceBranchFilter(where, tableName);
+      
       // 데이터 변환 (컬럼명 소문자 변환)
       final convertedData = _convertInputData(data);
       final lowerData = <String, dynamic>{};
@@ -258,7 +339,7 @@ class SupabaseAdapter {
       }
       
       // WHERE 조건 컬럼명 소문자 변환
-      final lowerWhere = where.map((w) => <String, dynamic>{
+      final lowerWhere = enforcedWhere.map((w) => <String, dynamic>{
         ...w,
         'field': (w['field'] as String?)?.toLowerCase(),
       }).toList();
@@ -297,8 +378,11 @@ class SupabaseAdapter {
         throw Exception('삭제 조건이 지정되지 않았습니다.');
       }
       
+      // 보안 강화: branch_id 필터 강제 추가
+      final enforcedWhere = _enforceBranchFilter(where, tableName);
+      
       // WHERE 조건 컬럼명 소문자 변환
-      final lowerWhere = where.map((w) => <String, dynamic>{
+      final lowerWhere = enforcedWhere.map((w) => <String, dynamic>{
         ...w,
         'field': (w['field'] as String?)?.toLowerCase(),
       }).toList();
@@ -389,6 +473,17 @@ class SupabaseAdapter {
   
   // ========== 데이터 형식 변환 ==========
   
+  /// 민감한 필드 목록 (응답에서 자동 제거)
+  static const Set<String> _sensitiveFields = {
+    'staff_access_password',
+    'member_password',
+    'branch_password',
+    'password',
+    'api_secret',
+    'secret_key',
+    'private_key',
+  };
+  
   /// PostgreSQL 응답 → 앱이 기대하는 형식으로 변환
   static List<Map<String, dynamic>> _convertResponseData(
     List<Map<String, dynamic>> data,
@@ -402,6 +497,17 @@ class SupabaseAdapter {
     for (final entry in row.entries) {
       // 컬럼명을 원래 패턴으로 복원 (PostgreSQL 소문자 → 원래 대소문자)
       final originalKey = _restoreColumnName(entry.key);
+      final lowerKey = entry.key.toLowerCase();
+      
+      // 민감 필드 자동 제거 (보안 강화)
+      if (_sensitiveFields.contains(lowerKey) || 
+          lowerKey.contains('password') || 
+          lowerKey.contains('secret') ||
+          lowerKey.contains('private_key')) {
+        // 민감 필드는 제외 (로그에도 출력하지 않음)
+        continue;
+      }
+      
       converted[originalKey] = _convertValue(entry.value);
     }
     
@@ -461,6 +567,37 @@ class SupabaseAdapter {
     }
     
     return value;
+  }
+  
+  /// branch_id를 데이터에 강제 추가 (보안 강화)
+  static Map<String, dynamic> _enforceBranchInData(
+    Map<String, dynamic> data,
+    String tableName,
+  ) {
+    final lowerTableName = tableName.toLowerCase();
+    
+    // 제외 테이블 체크
+    if (_excludedBranchFilterTables.contains(lowerTableName) ||
+        _excludedBranchFilterTables.contains(tableName)) {
+      return data;
+    }
+    
+    // branch_id 가져오기
+    final branchId = _currentBranchId;
+    if (branchId == null) {
+      throw Exception('보안 오류: 지점 정보가 설정되지 않았습니다. 로그인 후 다시 시도하세요.');
+    }
+    
+    // 이미 branch_id가 있으면 덮어쓰지 않음
+    if (data.containsKey('branch_id') || data.containsKey('branch_Id') || data.containsKey('BRANCH_ID')) {
+      return data;
+    }
+    
+    // branch_id 자동 추가
+    return {
+      ...data,
+      'branch_id': branchId,
+    };
   }
   
   /// 앱 입력 데이터 → PostgreSQL 형식으로 변환

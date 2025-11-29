@@ -1,8 +1,7 @@
 import 'package:flutter/material.dart';
-import 'package:crypto/crypto.dart';
-import 'dart:convert';
 import '/flutter_flow/flutter_flow_theme.dart';
 import '/services/api_service.dart';
+import '/services/password_service.dart';
 import '/main.dart';
 
 class ChangePasswordWidget extends StatefulWidget {
@@ -38,14 +37,6 @@ class _ChangePasswordWidgetState extends State<ChangePasswordWidget> {
     super.dispose();
   }
 
-  // SHA-256 해시 생성 (50자 이내로 제한)
-  String _hashPassword(String password) {
-    final bytes = utf8.encode(password);
-    final hash = sha256.convert(bytes);
-    // SHA-256은 64자이지만, varchar(50)에 맞추기 위해 앞 50자만 사용
-    return hash.toString().substring(0, 50);
-  }
-
   // 비밀번호 변경 처리
   Future<void> _handlePasswordChange() async {
     if (!_formKey.currentState!.validate()) {
@@ -71,25 +62,18 @@ class _ChangePasswordWidgetState extends State<ChangePasswordWidget> {
       // 현재 저장된 비밀번호 가져오기
       final storedPassword = currentUser['staff_access_password']?.toString() ?? '';
 
-      // 평문 비밀번호인지 해시 비밀번호인지 확인
-      final isPlainPassword = storedPassword.length <= 10 && !storedPassword.contains(RegExp(r'[a-f0-9]{50}'));
-
-      bool isCurrentPasswordCorrect = false;
-      if (isPlainPassword) {
-        // 평문 비밀번호와 직접 비교
-        isCurrentPasswordCorrect = currentPassword == storedPassword;
-      } else {
-        // 해시 비밀번호와 비교
-        final hashedCurrentPassword = _hashPassword(currentPassword);
-        isCurrentPasswordCorrect = hashedCurrentPassword == storedPassword;
-      }
+      // PasswordService를 사용한 비밀번호 검증 (bcrypt, SHA-256, 평문 모두 지원)
+      final isCurrentPasswordCorrect = PasswordService.verifyPassword(
+        currentPassword,
+        storedPassword,
+      );
 
       if (!isCurrentPasswordCorrect) {
         throw Exception('현재 비밀번호가 일치하지 않습니다.');
       }
 
       // 2. 새 비밀번호 해시화
-      final hashedNewPassword = _hashPassword(newPassword);
+      final hashedNewPassword = PasswordService.hashPassword(newPassword);
 
       // 3. 데이터베이스 업데이트
       final table = currentRole == 'pro' ? 'v2_staff_pro' : 'v2_staff_manager';

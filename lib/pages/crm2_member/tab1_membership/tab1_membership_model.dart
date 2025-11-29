@@ -190,8 +190,9 @@ class Tab1MembershipModel extends FlutterFlowModel<Tab1MembershipWidget> {
       Set<int> juniorMemberIds = {}; // 주니어 회원 ID들을 추적
       
       for (var relation in juniorRelations) {
-        int? parentMemberId = relation['member_id']; // 부모 회원 ID
-        int? juniorMemberId = relation['junior_member_id']; // 주니어 회원 ID
+        // v2_group 테이블 구조: member_id가 주니어 ID, related_member_id가 부모 ID
+        int? juniorMemberId = relation['member_id']; // 주니어 회원 ID
+        int? parentMemberId = relation['related_member_id']; // 부모 회원 ID
         
         if (parentMemberId != null && juniorMemberId != null) {
           // 부모-주니어 관계 매핑
