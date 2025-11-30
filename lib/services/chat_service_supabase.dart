@@ -350,13 +350,11 @@ class ChatServiceSupabase {
         }
       }
 
-      // 채팅방의 읽지 않은 메시지 수 초기화 (현재 사용자 기준)
-      if (readByKey == 'admin') {
-        await _supabase.from('chat_rooms').update({
-          'admin_unread_count': 0,
-          'updated_at': DateTime.now().toIso8601String(),
-        }).eq('id', chatRoomId);
-      }
+      // 주의: admin_unread_count는 공유 필드이므로 업데이트하지 않음
+      // 각 역할별 읽음 상태는 read_by 필드로 관리되며, 카운트는 read_by 기반으로 계산됨
+      // admin_unread_count를 0으로 만들면 다른 역할의 카운트에도 영향을 주므로 업데이트하지 않음
+      
+      print('✅ [읽음처리] 채팅방 $chatRoomId의 메시지를 읽음 처리 완료 (역할: $readByKey, read_by 업데이트됨)');
     } catch (e) {
       print('❌ 메시지 읽음 처리 실패: $e');
       rethrow;
@@ -441,25 +439,55 @@ class ChatServiceSupabase {
     return (response as List).length;
   }
 
-  // 현재 지점의 읽지 않은 메시지 총 개수 (관리자 기준)
+  // 현재 지점의 읽지 않은 메시지 총 개수 (현재 사용자 역할 기준)
+  // 각 역할별로 독립적인 읽지 않은 메시지 카운트를 위해 read_by 필드 기반 계산
   static Stream<int> getUnreadMessageCountStream() {
     final branchId = _getCurrentBranchId();
     if (branchId == null) {
       return Stream.value(0);
     }
 
-    // 초기 데이터 로드
+    // 현재 사용자 역할 가져오기
+    final currentUserRole = ApiService.getCurrentStaffRole() ?? 'admin';
+    final readByKey = currentUserRole == 'pro' ? 'pro' : (currentUserRole == 'manager' ? 'manager' : 'admin');
+
+    // 초기 데이터 로드 - read_by 필드를 기반으로 각 역할별 읽지 않은 메시지 계산
     final initialStream = Stream.fromFuture(
       _supabase
           .from('chat_rooms')
-          .select('admin_unread_count')
+          .select('id')
           .eq('branch_id', branchId)
           .eq('is_active', true)
-          .then((data) {
+          .then((chatRooms) async {
             int totalUnread = 0;
-            for (final item in data as List) {
-              totalUnread += (item['admin_unread_count'] as int? ?? 0);
+            
+            // 각 채팅방별로 읽지 않은 메시지 수 계산
+            for (final chatRoom in chatRooms as List) {
+              final chatRoomId = chatRoom['id'] as String;
+              
+              // 해당 채팅방의 읽지 않은 회원 메시지 수 계산 (현재 역할 기준)
+              final unreadMessages = await _supabase
+                  .from('chat_messages')
+                  .select('read_by')
+                  .eq('chat_room_id', chatRoomId)
+                  .eq('sender_type', 'member');
+              
+              for (final msg in unreadMessages as List) {
+                final readBy = msg['read_by'] as Map<String, dynamic>? ?? {
+                  'member': false,
+                  'pro': false,
+                  'manager': false,
+                  'admin': false,
+                };
+                
+                // 현재 역할이 읽지 않은 메시지면 카운트 증가
+                if (readBy[readByKey] != true) {
+                  totalUnread++;
+                }
+              }
             }
+            
+            print('📊 [읽지않은메시지] 총 ${totalUnread}개 (역할: $readByKey)');
             return totalUnread;
           }),
     );
@@ -483,15 +511,35 @@ class ChatServiceSupabase {
             ),
             callback: (payload) async {
               try {
-                final data = await _supabase
+                // read_by 필드를 기반으로 각 역할별 읽지 않은 메시지 수 재계산
+                final chatRooms = await _supabase
                     .from('chat_rooms')
-                    .select('admin_unread_count')
+                    .select('id')
                     .eq('branch_id', branchId)
                     .eq('is_active', true);
 
                 int totalUnread = 0;
-                for (final item in data as List) {
-                  totalUnread += (item['admin_unread_count'] as int? ?? 0);
+                for (final chatRoom in chatRooms as List) {
+                  final chatRoomId = chatRoom['id'] as String;
+                  
+                  final unreadMessages = await _supabase
+                      .from('chat_messages')
+                      .select('read_by')
+                      .eq('chat_room_id', chatRoomId)
+                      .eq('sender_type', 'member');
+                  
+                  for (final msg in unreadMessages as List) {
+                    final readBy = msg['read_by'] as Map<String, dynamic>? ?? {
+                      'member': false,
+                      'pro': false,
+                      'manager': false,
+                      'admin': false,
+                    };
+                    
+                    if (readBy[readByKey] != true) {
+                      totalUnread++;
+                    }
+                  }
                 }
 
                 changeStream.add(totalUnread);
@@ -714,29 +762,61 @@ class ChatServiceSupabase {
     });
   }
 
-  // 현재 지점의 모든 회원별 읽지 않은 메시지 개수 맵
+  // 현재 지점의 모든 회원별 읽지 않은 메시지 개수 맵 (현재 사용자 역할 기준)
   static Stream<Map<String, int>> getUnreadMessageCountsMapStream() {
     final branchId = _getCurrentBranchId();
     if (branchId == null) {
       return Stream.value({});
     }
 
-    // 초기 데이터 로드
+    // 현재 사용자 역할 가져오기
+    final currentUserRole = ApiService.getCurrentStaffRole() ?? 'admin';
+    final readByKey = currentUserRole == 'pro' ? 'pro' : (currentUserRole == 'manager' ? 'manager' : 'admin');
+
+    // 초기 데이터 로드 - read_by 필드를 기반으로 각 역할별 읽지 않은 메시지 계산
     final initialStream = Stream.fromFuture(
       _supabase
           .from('chat_rooms')
-          .select('member_id, admin_unread_count')
+          .select('id, member_id')
           .eq('branch_id', branchId)
           .eq('is_active', true)
-          .then((data) {
+          .then((chatRooms) async {
             Map<String, int> unreadCounts = {};
-            for (final item in data as List) {
-              final memberId = item['member_id'] as String?;
-              final unreadCount = item['admin_unread_count'] as int? ?? 0;
-              if (memberId != null) {
-                unreadCounts[memberId] = unreadCount;
+            
+            // 각 채팅방별로 읽지 않은 메시지 수 계산
+            for (final chatRoom in chatRooms as List) {
+              final chatRoomId = chatRoom['id'] as String;
+              final memberId = chatRoom['member_id'] as String?;
+              
+              if (memberId == null) continue;
+              
+              // 해당 채팅방의 읽지 않은 회원 메시지 수 계산 (현재 역할 기준)
+              final unreadMessages = await _supabase
+                  .from('chat_messages')
+                  .select('read_by')
+                  .eq('chat_room_id', chatRoomId)
+                  .eq('sender_type', 'member');
+              
+              int count = 0;
+              for (final msg in unreadMessages as List) {
+                final readBy = msg['read_by'] as Map<String, dynamic>? ?? {
+                  'member': false,
+                  'pro': false,
+                  'manager': false,
+                  'admin': false,
+                };
+                
+                // 현재 역할이 읽지 않은 메시지면 카운트 증가
+                if (readBy[readByKey] != true) {
+                  count++;
+                }
+              }
+              
+              if (count > 0) {
+                unreadCounts[memberId] = count;
               }
             }
+            
             return unreadCounts;
           }),
     );
@@ -760,18 +840,42 @@ class ChatServiceSupabase {
             ),
             callback: (payload) async {
               try {
-                final data = await _supabase
+                // read_by 필드를 기반으로 각 역할별 읽지 않은 메시지 수 재계산
+                final chatRooms = await _supabase
                     .from('chat_rooms')
-                    .select('member_id, admin_unread_count')
+                    .select('id, member_id')
                     .eq('branch_id', branchId)
                     .eq('is_active', true);
 
                 Map<String, int> unreadCounts = {};
-                for (final item in data as List) {
-                  final memberId = item['member_id'] as String?;
-                  final unreadCount = item['admin_unread_count'] as int? ?? 0;
-                  if (memberId != null) {
-                    unreadCounts[memberId] = unreadCount;
+                for (final chatRoom in chatRooms as List) {
+                  final chatRoomId = chatRoom['id'] as String;
+                  final memberId = chatRoom['member_id'] as String?;
+                  
+                  if (memberId == null) continue;
+                  
+                  final unreadMessages = await _supabase
+                      .from('chat_messages')
+                      .select('read_by')
+                      .eq('chat_room_id', chatRoomId)
+                      .eq('sender_type', 'member');
+                  
+                  int count = 0;
+                  for (final msg in unreadMessages as List) {
+                    final readBy = msg['read_by'] as Map<String, dynamic>? ?? {
+                      'member': false,
+                      'pro': false,
+                      'manager': false,
+                      'admin': false,
+                    };
+                    
+                    if (readBy[readByKey] != true) {
+                      count++;
+                    }
+                  }
+                  
+                  if (count > 0) {
+                    unreadCounts[memberId] = count;
                   }
                 }
 

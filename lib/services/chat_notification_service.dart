@@ -181,14 +181,32 @@ class ChatNotificationService extends ChangeNotifier {
       return;
     }
     
-    try {
-      // 우선 시스템 알림음 사용 (mp3 파일 없이도 작동)
-      _playFallbackSound();
-      print('🔔 시스템 알림음 사용');
-      
-    } catch (e) {
-      print('❌ 알림음 재생 실패: $e');
+    // 모바일에서는 AudioPlayer로 MP3 파일 재생 시도
+    if (!kIsWeb) {
+      try {
+        // 이전 재생이 있으면 먼저 정지
+        try {
+          await _audioPlayer!.stop();
+          await Future.delayed(Duration(milliseconds: 50)); // 정지 대기
+        } catch (e) {
+          // 정지 실패는 무시 (재생 중이 아닐 수도 있음)
+        }
+        
+        // 볼륨 및 모드 설정
+        await _audioPlayer!.setVolume(1.0); // 최대 볼륨
+        await _audioPlayer!.setPlayerMode(PlayerMode.lowLatency); // 낮은 지연시간 모드
+        
+        // MP3 파일 재생
+        await _audioPlayer!.play(AssetSource('sounds/dingdong.mp3'));
+        print('🔔 AudioPlayer로 딩동 소리 재생 (MP3, 볼륨: 1.0)');
+        return;
+      } catch (e) {
+        print('❌ MP3 재생 실패, 시스템 알림음으로 대체: $e');
+      }
     }
+    
+    // 웹이거나 MP3 재생 실패 시 시스템 알림음 사용
+    _playFallbackSound();
   }
 
   void _playFallbackSound() {
