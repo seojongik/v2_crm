@@ -6,7 +6,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter/material.dart';
 import 'package:audioplayers/audioplayers.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'chat_service.dart';
+import 'chat_service_supabase.dart';
 import 'api_service.dart';
 
 class ChatNotificationService extends ChangeNotifier {
@@ -90,7 +90,7 @@ class ChatNotificationService extends ChangeNotifier {
     _latestMessageInfoSubscription?.cancel();
     
     // 읽지 않은 메시지 카운트 구독
-    _unreadCountSubscription = ChatService.getUnreadMessageCountStream().listen((count) {
+    _unreadCountSubscription = ChatServiceSupabase.getUnreadMessageCountStream().listen((count) {
       int previousCount = _totalUnreadCount;
       _totalUnreadCount = count;
       
@@ -115,7 +115,7 @@ class ChatNotificationService extends ChangeNotifier {
     // 새로운 메시지 활동 감지 (관리자/회원 구분 없이)
     try {
       print('🔧 [알림] 메시지 활동 스트림 구독 시작...');
-      _messageActivitySubscription = ChatService.getMessageActivityStream().listen(
+      _messageActivitySubscription = ChatServiceSupabase.getMessageActivityStream().listen(
         (timestamp) {
           print('🔍 [알림] 메시지 활동 감지: 이전 타임스탬프=$_lastMessageTimestamp, 현재=$timestamp');
           
@@ -150,7 +150,7 @@ class ChatNotificationService extends ChangeNotifier {
     // 최신 메시지 정보 스트림 구독 (알림 표시용)
     try {
       print('🔧 [알림] 최신 메시지 정보 스트림 구독 시작...');
-      _latestMessageInfoSubscription = ChatService.getLatestMessageInfoStream().listen(
+      _latestMessageInfoSubscription = ChatServiceSupabase.getLatestMessageInfoStream().listen(
         (messageInfo) {
           if (messageInfo != null) {
             _latestMessageInfo = messageInfo;

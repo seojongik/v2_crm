@@ -2,7 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import '../../../constants/font_sizes.dart';
 import '../../../services/api_service.dart';
-import '../../../services/chat_service.dart';
+import '../../../services/chat_service_supabase.dart';
 import '../../../services/chat_notification_service.dart';
 import '../../../models/chat_models.dart';
 import '../../crm2_member/tab1_membership/member_page/member_main.dart';
@@ -59,6 +59,7 @@ class _Tab4ChattingWidgetState extends State<Tab4ChattingWidget> {
   Map<String, ChatRoom?> chatRooms = {};
   Map<String, int> unreadCounts = {};
   Map<String, StreamSubscription> messageSubscriptions = {};
+  bool _showEmojiPicker = false;
 
   // 탭 관련 상태
   int selectedMemberTab = 0; // 0: 응답대상, 1: 즐겨찾기, 2: 전체회원
@@ -78,7 +79,7 @@ class _Tab4ChattingWidgetState extends State<Tab4ChattingWidget> {
   Map<String, int> _previousUnreadCounts = {};
 
   void _subscribeToUnreadCounts() {
-    _unreadCountSubscription = ChatService.getUnreadMessageCountsMapStream().listen((counts) {
+    _unreadCountSubscription = ChatServiceSupabase.getUnreadMessageCountsMapStream().listen((counts) {
       if (!mounted) return;
 
       // 값이 실제로 변경되었는지 확인
@@ -272,7 +273,7 @@ class _Tab4ChattingWidgetState extends State<Tab4ChattingWidget> {
       print('💬 ChatService.getOrCreateChatRoom 호출 중...');
       
       // 채팅방 생성 또는 가져오기
-      final chatRoom = await ChatService.getOrCreateChatRoom(
+      final chatRoom = await ChatServiceSupabase.getOrCreateChatRoom(
         member.memberId.toString(),
         member.memberName,
         member.memberPhone,
@@ -304,7 +305,7 @@ class _Tab4ChattingWidgetState extends State<Tab4ChattingWidget> {
       
       // 메시지를 읽음 처리
       print('👁️ 메시지 읽음 처리 중...');
-      await ChatService.markMessagesAsRead(chatRoomId, member.memberId.toString());
+      await ChatServiceSupabase.markMessagesAsRead(chatRoomId, member.memberId.toString());
       
       print('🎉 채팅방 열기 완료!');
       
@@ -334,7 +335,7 @@ class _Tab4ChattingWidgetState extends State<Tab4ChattingWidget> {
     // 기존 구독이 있다면 취소
     messageSubscriptions[chatRoomId]?.cancel();
     
-    messageSubscriptions[chatRoomId] = ChatService.getMessagesStream(chatRoomId).listen((messages) {
+    messageSubscriptions[chatRoomId] = ChatServiceSupabase.getMessagesStream(chatRoomId).listen((messages) {
       if (mounted) {
         setState(() {
           chatMessages[chatRoomId] = messages;
@@ -350,9 +351,16 @@ class _Tab4ChattingWidgetState extends State<Tab4ChattingWidget> {
 
     final message = controller.text.trim();
     controller.clear();
+    
+    // 메시지 전송 후 이모티콘 창 닫기
+    if (_showEmojiPicker ?? false) {
+      setState(() {
+        _showEmojiPicker = false;
+      });
+    }
 
     try {
-      await ChatService.sendMessage(chatRoomId, memberId, message);
+      await ChatServiceSupabase.sendMessage(chatRoomId, memberId, message);
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('메시지 전송 실패: $e')),
@@ -978,7 +986,7 @@ class _Tab4ChattingWidgetState extends State<Tab4ChattingWidget> {
         // 채팅 메시지 영역
         Expanded(
           child: Container(
-            color: Colors.grey.shade50,
+            color: Color(0xFFB8C5D6), // MyXPlanner 스타일 통일
             child: _buildMessageList(member),
           ),
         ),
@@ -987,14 +995,12 @@ class _Tab4ChattingWidgetState extends State<Tab4ChattingWidget> {
         Container(
           padding: EdgeInsets.all(16),
           decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.only(
-              bottomLeft: Radius.circular(12),
-              bottomRight: Radius.circular(12),
-            ),
-            border: Border(top: BorderSide(color: Colors.grey.shade300)),
+            color: Color(0xFFB8C5D6), // MyXPlanner 스타일 통일
           ),
-          child: _buildMessageInput(member),
+          child: SafeArea(
+            top: false,
+            child: _buildMessageInput(member),
+          ),
         ),
       ],
     );
@@ -1047,44 +1053,90 @@ class _Tab4ChattingWidgetState extends State<Tab4ChattingWidget> {
       itemCount: messages.length,
       itemBuilder: (context, index) {
         final message = messages[index];
-        final isAdmin = message.senderType == 'admin';
+        
+        // 현재 로그인한 사용자의 sender_type 가져오기
+        final currentUserRole = ApiService.getCurrentStaffRole() ?? 'admin';
+        
+        // 본인 메시지 판단: 현재 로그인한 사용자의 sender_type과 일치하는 메시지만 본인 메시지
+        final isMyMessage = message.senderType == currentUserRole;
+        
+        // 상대방 메시지일 때 발신자 라벨 생성
+        String? senderLabel;
+        if (!isMyMessage) {
+          // 상대방 메시지일 때만 라벨 표시
+          switch (message.senderType) {
+            case 'admin':
+              senderLabel = '관리자';
+              break;
+            case 'manager':
+              senderLabel = '매니저';
+              break;
+            case 'pro':
+              // 프로는 이름 + " 프로" 형식
+              final proName = message.senderName.isNotEmpty 
+                  ? message.senderName 
+                  : '프로';
+              senderLabel = '$proName 프로';
+              break;
+            case 'member':
+              // 회원 메시지일 때
+              senderLabel = message.senderName.isNotEmpty ? message.senderName : null;
+              break;
+          }
+        }
         
         return Container(
           margin: EdgeInsets.only(bottom: 12),
           child: Row(
-            mainAxisAlignment: isAdmin ? MainAxisAlignment.end : MainAxisAlignment.start,
+            mainAxisAlignment: isMyMessage ? MainAxisAlignment.end : MainAxisAlignment.start,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              if (!isAdmin) ...[
+              if (!isMyMessage) ...[
+                // sender_type별 아이콘 및 색상
                 CircleAvatar(
                   radius: 16,
-                  backgroundColor: Colors.grey.shade200,
-                  child: Text(
-                    '${member.memberId}',
-                    style: TextStyle(
-                      color: Colors.grey.shade700,
-                      fontWeight: FontWeight.bold,
-                      fontSize: 11,
-                    ),
+                  backgroundColor: _getAvatarColor(message.senderType),
+                  child: Icon(
+                    _getAvatarIcon(message.senderType),
+                    size: 18,
+                    color: Colors.white,
                   ),
                 ),
                 SizedBox(width: 8),
               ],
               Flexible(
                 child: Column(
-                  crossAxisAlignment: isAdmin ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+                  crossAxisAlignment: isMyMessage ? CrossAxisAlignment.end : CrossAxisAlignment.start,
                   children: [
+                    // 상대방 메시지일 때 발신자 라벨 표시
+                    if (!isMyMessage && senderLabel != null) ...[
+                      Padding(
+                        padding: EdgeInsets.only(
+                          left: 0,
+                          right: 0,
+                          bottom: 2,
+                        ),
+                        child: Text(
+                          senderLabel,
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: Colors.black54,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ),
+                    ],
                     Container(
                       padding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                       decoration: BoxDecoration(
-                        color: isAdmin ? Color(0xFFFFCD00) : Colors.white,
+                        color: isMyMessage ? Color(0xFFFFCD00) : Colors.white,
                         borderRadius: BorderRadius.circular(16),
-                        border: isAdmin ? null : Border.all(color: Colors.grey.shade300),
+                        border: isMyMessage ? null : Border.all(color: Colors.grey.shade300),
                       ),
                       child: Text(
                         message.message,
                         style: TextStyle(
-                          color: isAdmin ? Color(0xFF000000) : Colors.black87,
+                          color: isMyMessage ? Color(0xFF000000) : Colors.black87,
                           fontSize: 14,
                         ),
                       ),
@@ -1100,29 +1152,17 @@ class _Tab4ChattingWidgetState extends State<Tab4ChattingWidget> {
                             fontSize: 10,
                           ),
                         ),
-                        if (isAdmin) ...[
+                        if (isMyMessage) ...[
                           SizedBox(width: 4),
-                          Icon(
-                            message.isRead ? Icons.done_all : Icons.done,
-                            size: 12,
-                            color: message.isRead ? Colors.blue : Colors.grey.shade400,
-                          ),
-                          if (message.isRead)
-                            Text(
-                              ' 읽음',
-                              style: TextStyle(
-                                color: Colors.blue,
-                                fontSize: 9,
-                                fontWeight: FontWeight.w500,
-                              ),
-                            ),
+                          // 각 sender_type별 읽음 상태 표시
+                          _buildReadStatusIcons(message),
                         ],
                       ],
                     ),
                   ],
                 ),
               ),
-              if (isAdmin) ...[
+              if (isMyMessage) ...[
                 SizedBox(width: 8),
                 CircleAvatar(
                   radius: 16,
@@ -1151,51 +1191,300 @@ class _Tab4ChattingWidgetState extends State<Tab4ChattingWidget> {
     final controller = messageControllers[chatRoomId];
     if (controller == null) return Container();
 
-    return Row(
+    return Column(
       children: [
-        Expanded(
-          child: TextField(
-            controller: controller,
-            style: TextStyle(color: Colors.black87),
-            maxLines: null,
-            decoration: InputDecoration(
-              hintText: '메시지를 입력하세요...',
-              hintStyle: TextStyle(color: Colors.black45),
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(20),
-                borderSide: BorderSide(color: Colors.grey.shade300),
-              ),
-              enabledBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(20),
-                borderSide: BorderSide(color: Colors.grey.shade300),
-              ),
-              focusedBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(20),
-                borderSide: BorderSide(color: Color(0xFF3C1E1E)),
-              ),
-              fillColor: Colors.grey.shade50,
-              filled: true,
-              contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        if (_showEmojiPicker ?? false)
+          Container(
+            height: 180,
+            margin: EdgeInsets.only(bottom: 12),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(20),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.08),
+                  blurRadius: 8,
+                  offset: Offset(0, 2),
+                ),
+              ],
             ),
-            onSubmitted: (value) {
-              if (value.trim().isNotEmpty) {
-                _sendMessage(chatRoomId, member.memberId.toString());
-              }
-            },
+            child: GridView.builder(
+              padding: EdgeInsets.all(12),
+              gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                crossAxisCount: 8,
+                crossAxisSpacing: 4,
+                mainAxisSpacing: 4,
+              ),
+              itemCount: _commonEmojis.length,
+              itemBuilder: (context, index) {
+                if (index >= _commonEmojis.length) {
+                  return SizedBox.shrink();
+                }
+                return GestureDetector(
+                  onTap: () {
+                    if (controller != null) {
+                      _insertEmoji(controller, _commonEmojis[index]);
+                    }
+                  },
+                  child: Container(
+                    decoration: BoxDecoration(
+                      color: Colors.grey[50],
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Center(
+                      child: Text(
+                        _commonEmojis[index],
+                        style: TextStyle(fontSize: 18),
+                      ),
+                    ),
+                  ),
+                );
+              },
+            ),
           ),
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.end,
+          children: [
+            Expanded(
+              child: Container(
+                constraints: BoxConstraints(
+                  minHeight: 48,
+                  maxHeight: 120,
+                ),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(24),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.08),
+                      blurRadius: 12,
+                      offset: Offset(0, 2),
+                      spreadRadius: 0,
+                    ),
+                  ],
+                ),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(24),
+                  child: TextField(
+                    controller: controller,
+                    style: TextStyle(
+                      fontSize: 15,
+                      color: Colors.black,
+                    ),
+                    decoration: InputDecoration(
+                      hintText: '메시지를 입력하세요',
+                      hintStyle: TextStyle(
+                        color: Colors.grey[500],
+                        fontSize: 15,
+                      ),
+                      border: InputBorder.none,
+                      enabledBorder: InputBorder.none,
+                      focusedBorder: InputBorder.none,
+                      contentPadding: EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+                      isDense: true,
+                    ),
+                    maxLines: 5,
+                    minLines: 1,
+                    textInputAction: TextInputAction.newline,
+                    onSubmitted: (value) {
+                      if (value.trim().isNotEmpty) {
+                        _sendMessage(chatRoomId, member.memberId.toString());
+                      }
+                    },
+                  ),
+                ),
+              ),
+            ),
+            SizedBox(width: 6),
+            Container(
+              decoration: BoxDecoration(
+                color: Colors.white,
+                shape: BoxShape.circle,
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.06),
+                    blurRadius: 4,
+                    offset: Offset(0, 1),
+                  ),
+                ],
+              ),
+              child: IconButton(
+                onPressed: () {
+                  setState(() {
+                    _showEmojiPicker = !(_showEmojiPicker ?? false);
+                  });
+                },
+                icon: Icon(
+                  (_showEmojiPicker ?? false) ? Icons.keyboard : Icons.sentiment_satisfied,
+                  color: Colors.black54,
+                  size: 22,
+                ),
+                padding: EdgeInsets.all(10),
+                constraints: BoxConstraints(),
+              ),
+            ),
+            SizedBox(width: 6),
+            Container(
+              decoration: BoxDecoration(
+                color: Colors.white,
+                shape: BoxShape.circle,
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.06),
+                    blurRadius: 4,
+                    offset: Offset(0, 1),
+                  ),
+                ],
+              ),
+              child: IconButton(
+                onPressed: () => _sendMessage(chatRoomId, member.memberId.toString()),
+                icon: Icon(Icons.send, color: Colors.black54, size: 22),
+                padding: EdgeInsets.all(10),
+                constraints: BoxConstraints(),
+              ),
+            ),
+          ],
         ),
-        SizedBox(width: 8),
-        Container(
-          decoration: BoxDecoration(
-            color: Color(0xFFFFCD00),
-            borderRadius: BorderRadius.circular(20),
+      ],
+    );
+  }
+
+  // sender_type별 아바타 아이콘 가져오기
+  IconData _getAvatarIcon(String senderType) {
+    switch (senderType) {
+      case 'admin':
+        return Icons.golf_course; // 골프 홀 아이콘
+      case 'manager':
+        return Icons.supervisor_account;
+      case 'pro':
+        return Icons.school; // 레슨 아이콘
+      case 'member':
+      default:
+        return Icons.account_circle;
+    }
+  }
+
+  // sender_type별 아바타 배경색 가져오기
+  Color _getAvatarColor(String senderType) {
+    switch (senderType) {
+      case 'admin':
+        return Color(0xFF3B82F6); // 파란색
+      case 'manager':
+        return Color(0xFF8B5CF6); // 보라색
+      case 'pro':
+        return Color(0xFF10B981); // 초록색
+      case 'member':
+      default:
+        return Colors.grey.shade600; // 회색
+    }
+  }
+
+  // 각 sender_type별 읽음 상태 아이콘 표시
+  Widget _buildReadStatusIcons(ChatMessage message) {
+    final currentUserRole = ApiService.getCurrentStaffRole() ?? 'admin';
+    
+    // 현재 사용자가 보낸 메시지가 아니면 표시하지 않음
+    if (message.senderType != currentUserRole) {
+      return SizedBox.shrink();
+    }
+
+    // 읽음 상태 리스트 생성
+    final readStatuses = <Map<String, dynamic>>[];
+    
+    // 회원이 읽었는지 확인
+    if (message.readBy['member'] == true) {
+      readStatuses.add({'type': 'member', 'label': '회원'});
+    }
+    
+    // 프로가 읽었는지 확인
+    if (message.readBy['pro'] == true) {
+      readStatuses.add({'type': 'pro', 'label': '프로'});
+    }
+    
+    // 매니저가 읽었는지 확인
+    if (message.readBy['manager'] == true) {
+      readStatuses.add({'type': 'manager', 'label': '매니저'});
+    }
+    
+    // 관리자가 읽었는지 확인
+    if (message.readBy['admin'] == true) {
+      readStatuses.add({'type': 'admin', 'label': '관리자'});
+    }
+
+    if (readStatuses.isEmpty) {
+      // 아무도 읽지 않음
+      return Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            Icons.done,
+            size: 12,
+            color: Colors.grey.shade400,
           ),
-          child: IconButton(
-            onPressed: () => _sendMessage(chatRoomId, member.memberId.toString()),
-            icon: Icon(Icons.send, color: Color(0xFF000000), size: 20),
+        ],
+      );
+    }
+
+    // 일부 또는 모두 읽음
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(
+          Icons.done_all,
+          size: 12,
+          color: Colors.blue,
+        ),
+        SizedBox(width: 2),
+        Text(
+          readStatuses.map((s) => s['label']).join(', ') + ' 읽음',
+          style: TextStyle(
+            color: Colors.blue,
+            fontSize: 9,
+            fontWeight: FontWeight.w500,
           ),
         ),
       ],
+    );
+  }
+
+  // 자주 사용하는 이모티콘 목록
+  static const List<String> _commonEmojis = [
+    '😀', '😃', '😄', '😁', '😆', '😅', '😂', '🤣',
+    '😊', '😇', '🙂', '🙃', '😉', '😌', '😍', '🥰',
+    '😘', '😗', '😙', '😚', '😋', '😛', '😝', '😜',
+    '🤪', '🤨', '🧐', '🤓', '😎', '🥸', '🤩', '🥳',
+    '😏', '😒', '😞', '😔', '😟', '😕', '🙁', '☹️',
+    '😣', '😖', '😫', '😩', '🥺', '😢', '😭', '😤',
+    '😠', '😡', '🤬', '🤯', '😳', '🥵', '🥶', '😱',
+    '😨', '😰', '😥', '😓', '🤗', '🤔', '🤭', '🤫',
+    '🤥', '😶', '😐', '😑', '😬', '🙄', '😯', '😦',
+    '😧', '😮', '😲', '🥱', '😴', '🤤', '😪', '😵',
+    '🤐', '🥴', '🤢', '🤮', '🤧', '😷', '🤒', '🤕',
+    '🤑', '🤠', '😈', '👿', '👹', '👺', '🤡', '💩',
+    '👻', '💀', '☠️', '👽', '👾', '🤖', '🎃', '😺',
+    '😸', '😹', '😻', '😼', '😽', '🙀', '😿', '😾',
+    '👍', '👎', '👌', '✌️', '🤞', '🤟', '🤘', '🤙',
+    '👈', '👉', '👆', '🖕', '👇', '☝️', '👋', '🤚',
+    '🖐️', '✋', '🖖', '👏', '🙌', '🤲', '🤝', '🙏',
+    '❤️', '🧡', '💛', '💚', '💙', '💜', '🖤', '🤍',
+    '🤎', '💔', '❣️', '💕', '💞', '💓', '💗', '💖',
+    '💘', '💝', '💟', '☮️', '✝️', '☪️', '🕉️', '☸️',
+  ];
+
+  void _insertEmoji(TextEditingController controller, String emoji) {
+    final text = controller.text;
+    final selection = controller.selection;
+    
+    // selection 범위 검증
+    final start = selection.start.clamp(0, text.length);
+    final end = selection.end.clamp(0, text.length);
+    
+    final newText = text.replaceRange(start, end, emoji);
+    controller.value = controller.value.copyWith(
+      text: newText,
+      selection: TextSelection.collapsed(
+        offset: (start + emoji.length).clamp(0, newText.length),
+      ),
     );
   }
 

@@ -83,11 +83,13 @@ class SupabaseAdapter {
   }
   
   // branch_id 필터링이 필요 없는 테이블 목록
+  // (로그인 시 조회되는 테이블, 지점 정보가 없는 상태에서 조회 가능해야 함)
   static const Set<String> _excludedBranchFilterTables = {
     'v2_branch',
     'staff',
     'v2_staff_pro',
     'v2_staff_manager',
+    'v3_members',  // 로그인 시 전화번호로 조회하므로 지점 정보 없이 조회 가능해야 함
   };
   
   /// branch_id 필터 강제 추가 (보안 강화)
@@ -136,6 +138,7 @@ class SupabaseAdapter {
     List<Map<String, dynamic>>? orderBy,
     int? limit,
     int? offset,
+    bool includeSensitiveFields = false, // 로그인 시 비밀번호 필드 포함용
   }) async {
     try {
       // 테이블명 매핑 (legacy → v2)
@@ -189,7 +192,7 @@ class SupabaseAdapter {
       final List<Map<String, dynamic>> result = 
           List<Map<String, dynamic>>.from(response);
       
-      return _convertResponseData(result);
+      return _convertResponseData(result, includeSensitiveFields: includeSensitiveFields);
       
     } catch (e) {
       print('❌ [CRM] Supabase getData 오류: $e');
@@ -486,12 +489,16 @@ class SupabaseAdapter {
   
   /// PostgreSQL 응답 → 앱이 기대하는 형식으로 변환
   static List<Map<String, dynamic>> _convertResponseData(
-    List<Map<String, dynamic>> data,
-  ) {
-    return data.map((row) => _convertResponseRow(row)).toList();
+    List<Map<String, dynamic>> data, {
+    bool includeSensitiveFields = false,
+  }) {
+    return data.map((row) => _convertResponseRow(row, includeSensitiveFields: includeSensitiveFields)).toList();
   }
   
-  static Map<String, dynamic> _convertResponseRow(Map<String, dynamic> row) {
+  static Map<String, dynamic> _convertResponseRow(
+    Map<String, dynamic> row, {
+    bool includeSensitiveFields = false,
+  }) {
     final converted = <String, dynamic>{};
     
     for (final entry in row.entries) {
@@ -499,13 +506,15 @@ class SupabaseAdapter {
       final originalKey = _restoreColumnName(entry.key);
       final lowerKey = entry.key.toLowerCase();
       
-      // 민감 필드 자동 제거 (보안 강화)
-      if (_sensitiveFields.contains(lowerKey) || 
-          lowerKey.contains('password') || 
-          lowerKey.contains('secret') ||
-          lowerKey.contains('private_key')) {
-        // 민감 필드는 제외 (로그에도 출력하지 않음)
-        continue;
+      // 민감 필드 자동 제거 (보안 강화) - 로그인 시에는 제외하지 않음
+      if (!includeSensitiveFields) {
+        if (_sensitiveFields.contains(lowerKey) || 
+            lowerKey.contains('password') || 
+            lowerKey.contains('secret') ||
+            lowerKey.contains('private_key')) {
+          // 민감 필드는 제외 (로그에도 출력하지 않음)
+          continue;
+        }
       }
       
       converted[originalKey] = _convertValue(entry.value);
