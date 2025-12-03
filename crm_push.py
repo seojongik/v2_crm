@@ -79,15 +79,34 @@ def main():
         response = input(f"{Colors.YELLOW}기존 커밋을 subtree push 하시겠습니까? (y/N): {Colors.RESET}").lower()
         if response == 'y':
             ensure_remote(project_root)
-            print_step(f"Subtree push 중 ({REMOTE_NAME}/{BRANCH})")
+            print_step(f"Subtree push 중 ({REMOTE_NAME}/{BRANCH}) - 강제 push (로컬 우선)")
             try:
+                # subtree split으로 분리
                 run_command(
-                    ['git', 'subtree', 'push', '--prefix', FOLDER_PREFIX, REMOTE_NAME, BRANCH],
+                    ['git', 'subtree', 'split', '--prefix', FOLDER_PREFIX, '-b', f'subtree-{FOLDER_PREFIX}'],
                     cwd=project_root
                 )
-                print_success("Subtree push 완료!")
-            except:
-                print_error("Subtree push 실패. 먼저 모노레포에 커밋이 필요할 수 있습니다.")
+                # force push
+                run_command(
+                    ['git', 'push', REMOTE_NAME, f'subtree-{FOLDER_PREFIX}:{BRANCH}', '--force'],
+                    cwd=project_root
+                )
+                # 임시 브랜치 삭제
+                run_command(
+                    ['git', 'branch', '-D', f'subtree-{FOLDER_PREFIX}'],
+                    cwd=project_root, check=False
+                )
+                print_success("Subtree push 완료! (로컬 우선 강제 push)")
+            except Exception as e:
+                print_error(f"Subtree push 실패: {e}")
+                # 대체 방법: 일반 subtree push 시도
+                try:
+                    run_command(
+                        ['git', 'subtree', 'push', '--prefix', FOLDER_PREFIX, REMOTE_NAME, BRANCH],
+                        cwd=project_root, check=False
+                    )
+                except:
+                    pass
         sys.exit(0)
 
     print_success("변경사항 발견:")
@@ -130,13 +149,38 @@ def main():
         print_warning("Push를 취소했습니다. 커밋은 모노레포에 저장되었습니다.")
         sys.exit(0)
 
-    print_step(f"Subtree push 중 ({REMOTE_NAME}/{BRANCH})")
-    run_command(
-        ['git', 'subtree', 'push', '--prefix', FOLDER_PREFIX, REMOTE_NAME, BRANCH],
-        cwd=project_root
-    )
-    print_success("Push 완료!")
-    print(f"{Colors.GREEN}✓ {REMOTE_URL} 에 {FOLDER_PREFIX}/ 폴더가 push 되었습니다.{Colors.RESET}")
+    print_step(f"Subtree push 중 ({REMOTE_NAME}/{BRANCH}) - 강제 push (로컬 우선)")
+    try:
+        # subtree split으로 분리
+        run_command(
+            ['git', 'subtree', 'split', '--prefix', FOLDER_PREFIX, '-b', f'subtree-{FOLDER_PREFIX}'],
+            cwd=project_root
+        )
+        # force push
+        run_command(
+            ['git', 'push', REMOTE_NAME, f'subtree-{FOLDER_PREFIX}:{BRANCH}', '--force'],
+            cwd=project_root
+        )
+        # 임시 브랜치 삭제
+        run_command(
+            ['git', 'branch', '-D', f'subtree-{FOLDER_PREFIX}'],
+            cwd=project_root, check=False
+        )
+        print_success("Push 완료! (로컬 우선 강제 push)")
+    except Exception as e:
+        print_error(f"Subtree push 실패: {e}")
+        # 대체 방법: 일반 subtree push 시도
+        try:
+            run_command(
+                ['git', 'subtree', 'push', '--prefix', FOLDER_PREFIX, REMOTE_NAME, BRANCH],
+                cwd=project_root
+            )
+            print_success("Push 완료!")
+        except:
+            print_error("모든 push 방법 실패")
+            raise
+    
+    print(f"{Colors.GREEN}✓ {REMOTE_URL} 에 {FOLDER_PREFIX}/ 폴더가 push 되었습니다. (로컬 우선){Colors.RESET}")
 
 if __name__ == '__main__':
     main()
