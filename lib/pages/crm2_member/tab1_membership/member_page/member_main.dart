@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '/services/api_service.dart';
+import '/services/sms_service.dart';
 import '/services/tab_design_upper.dart';
 import '/widgets/planner_app_popup.dart';
 import '/flutter_flow/flutter_flow_theme.dart';
@@ -489,6 +490,10 @@ class _MemberMainWidgetState extends State<MemberMainWidget>
   late TextEditingController channelKeywordController;
   late TextEditingController addressController;
   String selectedGender = '남성';
+  
+  // 전화번호 인증 상태
+  bool isPhoneVerified = false;
+  String? originalPhone; // 원래 전화번호 (변경 감지용)
 
   @override
   void initState() {
@@ -558,6 +563,10 @@ class _MemberMainWidgetState extends State<MemberMainWidget>
           selectedGender = '남성';
         }
         
+        // 전화번호 인증 상태 설정
+        isPhoneVerified = memberData['member_phone_auth']?.toString() == 'success';
+        originalPhone = memberData['member_phone']?.toString() ?? '';
+        
         print('폼 필드 설정 완료');
         print('이름: ${nameController.text}');
         print('전화번호: ${phoneController.text}');
@@ -593,23 +602,39 @@ class _MemberMainWidgetState extends State<MemberMainWidget>
 
   Future<void> saveMemberInfo() async {
     try {
-      await ApiService.updateMember(
-        widget.memberId,
-        {
-          'member_name': nameController.text,
-          'member_phone': phoneController.text,
-          'member_birthday': birthdateController.text,
-          'member_nickname': nicknameController.text,
-          'member_chn_keyword': channelKeywordController.text,
-          'member_address': addressController.text,
-          'member_gender': selectedGender,
-        },
-      );
+      final newPhone = phoneController.text.trim().isEmpty ? null : phoneController.text.trim();
+      final phoneChanged = originalPhone != newPhone;
+      
+      // 전화번호가 변경되었고 기존에 인증된 상태였다면 인증 해제
+      Map<String, dynamic> updateData = {
+        'member_name': nameController.text.trim().isEmpty ? null : nameController.text.trim(),
+        'member_phone': newPhone,
+        'member_birthday': birthdateController.text.trim().isEmpty ? null : birthdateController.text.trim(),
+        'member_nickname': nicknameController.text.trim().isEmpty ? null : nicknameController.text.trim(),
+        'member_chn_keyword': channelKeywordController.text.trim().isEmpty ? null : channelKeywordController.text.trim(),
+        'member_address': addressController.text.trim().isEmpty ? null : addressController.text.trim(),
+        'member_gender': selectedGender.isEmpty ? null : selectedGender,
+      };
+      
+      // 전화번호 변경 시 해당 회원의 인증 정보만 초기화 (지점별 독립)
+      if (phoneChanged) {
+        updateData['member_phone_auth'] = null;
+        updateData['member_phone_auth_timestamp'] = null;
+        print('📱 전화번호 변경 감지: $originalPhone → $newPhone (인증 해제)');
+      }
+      
+      await ApiService.updateMember(widget.memberId, updateData);
+
+      String message = '회원 정보가 성공적으로 저장되었습니다.';
+      if (phoneChanged && isPhoneVerified) {
+        message += '\n전화번호가 변경되어 재인증이 필요합니다.';
+      }
 
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('회원 정보가 성공적으로 저장되었습니다.'),
+          content: Text(message),
           backgroundColor: Color(0xFF10B981),
+          duration: Duration(seconds: phoneChanged ? 4 : 2),
         ),
       );
 
@@ -622,6 +647,187 @@ class _MemberMainWidgetState extends State<MemberMainWidget>
           backgroundColor: Color(0xFFEF4444),
         ),
       );
+    }
+  }
+
+  // 앱 설치 안내 SMS 발송
+  Future<void> sendAppInstallSms() async {
+    if (memberInfo == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('회원 정보를 불러오는 중입니다. 잠시 후 다시 시도해주세요.'),
+          backgroundColor: Color(0xFFEF4444),
+        ),
+      );
+      return;
+    }
+
+    final memberPhone = memberInfo!['member_phone']?.toString();
+    final memberName = memberInfo!['member_name']?.toString() ?? '';
+
+    if (memberPhone == null || memberPhone.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('회원 전화번호가 등록되어 있지 않습니다.'),
+          backgroundColor: Color(0xFFEF4444),
+        ),
+      );
+      return;
+    }
+
+    // 발송 확인 다이얼로그
+    final shouldSend = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16.0),
+          ),
+          title: Row(
+            children: [
+              Container(
+                padding: EdgeInsets.all(8.0),
+                decoration: BoxDecoration(
+                  color: Color(0xFFECFDF5),
+                  borderRadius: BorderRadius.circular(8.0),
+                ),
+                child: Icon(
+                  Icons.sms_outlined,
+                  color: Color(0xFF10B981),
+                  size: 24.0,
+                ),
+              ),
+              SizedBox(width: 12.0),
+              Text(
+                '앱 설치 안내',
+                style: TextStyle(
+                  fontFamily: 'Pretendard',
+                  fontSize: 18.0,
+                  fontWeight: FontWeight.w700,
+                  color: Color(0xFF1F2937),
+                ),
+              ),
+            ],
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                '$memberName 회원님에게',
+                style: TextStyle(
+                  fontFamily: 'Pretendard',
+                  fontSize: 15.0,
+                  fontWeight: FontWeight.w600,
+                  color: Color(0xFF374151),
+                ),
+              ),
+              SizedBox(height: 4.0),
+              Text(
+                '앱 설치 링크를 문자로 발송하시겠습니까?',
+                style: TextStyle(
+                  fontFamily: 'Pretendard',
+                  fontSize: 15.0,
+                  fontWeight: FontWeight.w500,
+                  color: Color(0xFF374151),
+                ),
+              ),
+              SizedBox(height: 12.0),
+              Container(
+                padding: EdgeInsets.all(12.0),
+                decoration: BoxDecoration(
+                  color: Color(0xFFF3F4F6),
+                  borderRadius: BorderRadius.circular(8.0),
+                ),
+                child: Row(
+                  children: [
+                    Icon(Icons.phone_android, size: 16.0, color: Color(0xFF6B7280)),
+                    SizedBox(width: 8.0),
+                    Text(
+                      memberPhone,
+                      style: TextStyle(
+                        fontFamily: 'Pretendard',
+                        fontSize: 14.0,
+                        fontWeight: FontWeight.w600,
+                        color: Color(0xFF374151),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: Text(
+                '취소',
+                style: TextStyle(
+                  fontFamily: 'Pretendard',
+                  color: Color(0xFF6B7280),
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ),
+            ElevatedButton(
+              onPressed: () => Navigator.of(context).pop(true),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Color(0xFF10B981),
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8.0),
+                ),
+              ),
+              child: Text(
+                '발송하기',
+                style: TextStyle(
+                  fontFamily: 'Pretendard',
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (shouldSend != true) return;
+
+    // SMS 발송
+    try {
+      final result = await SmsService.sendAppInstallSms(
+        phoneNumber: memberPhone,
+        memberName: memberName,
+        appName: 'crm_lite_pro',
+      );
+
+      if (mounted) {
+        if (result['success'] == true) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('앱 설치 안내 문자가 발송되었습니다.'),
+              backgroundColor: Color(0xFF10B981),
+            ),
+          );
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('문자 발송 실패: ${result['error']}'),
+              backgroundColor: Color(0xFFEF4444),
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('문자 발송 중 오류가 발생했습니다.'),
+            backgroundColor: Color(0xFFEF4444),
+          ),
+        );
+      }
     }
   }
 
@@ -767,6 +973,32 @@ class _MemberMainWidgetState extends State<MemberMainWidget>
                   ),
                   style: ElevatedButton.styleFrom(
                     backgroundColor: Color(0xFF3B82F6),
+                    foregroundColor: Colors.white,
+                    elevation: 0,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(10.0),
+                    ),
+                    padding: EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+                  ),
+                ),
+              ),
+              // 앱설치안내 버튼
+              Container(
+                margin: EdgeInsets.only(right: 8.0, top: 12.0, bottom: 12.0),
+                child: ElevatedButton.icon(
+                  onPressed: sendAppInstallSms,
+                  icon: Icon(Icons.install_mobile, size: 16.0, color: Colors.white),
+                  label: Text(
+                    '앱설치안내',
+                    style: TextStyle(
+                      fontFamily: 'Pretendard',
+                      color: Colors.white,
+                      fontSize: 14.0,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Color(0xFF8B5CF6),
                     foregroundColor: Colors.white,
                     elevation: 0,
                     shape: RoundedRectangleBorder(
@@ -942,11 +1174,7 @@ class _MemberMainWidgetState extends State<MemberMainWidget>
                                   ),
                                   SizedBox(width: 16.0),
                                   Expanded(
-                                    child: _buildCompactFormField(
-                                      label: '전화번호',
-                                      controller: phoneController,
-                                      icon: Icons.phone_outlined,
-                                    ),
+                                    child: _buildPhoneFieldWithAuthStatus(),
                                   ),
                                   SizedBox(width: 16.0),
                                   Expanded(
@@ -1123,6 +1351,99 @@ class _MemberMainWidgetState extends State<MemberMainWidget>
               filled: true,
               fillColor: Colors.white,
               contentPadding: EdgeInsets.symmetric(horizontal: 12.0, vertical: 8.0),
+            ),
+            style: AppTextStyles.cardSubtitle.copyWith(
+              fontWeight: FontWeight.w500,
+              color: Color(0xFF1F2937),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  // 전화번호 필드 (인증 상태 표시 포함)
+  Widget _buildPhoneFieldWithAuthStatus() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Icon(
+              Icons.phone_outlined,
+              size: 14.0,
+              color: Color(0xFF06B6D4),
+            ),
+            SizedBox(width: 6.0),
+            Text(
+              '전화번호',
+              style: AppTextStyles.cardBody.copyWith(
+                color: Color(0xFF374151),
+                fontWeight: FontWeight.w600,
+              ),
+              overflow: TextOverflow.ellipsis,
+            ),
+            SizedBox(width: 8.0),
+            // 인증 상태 배지
+            Container(
+              padding: EdgeInsets.symmetric(horizontal: 6.0, vertical: 2.0),
+              decoration: BoxDecoration(
+                color: isPhoneVerified ? Color(0xFFDCFCE7) : Color(0xFFFEF3C7),
+                borderRadius: BorderRadius.circular(4.0),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    isPhoneVerified ? Icons.verified : Icons.warning_amber_rounded,
+                    size: 12.0,
+                    color: isPhoneVerified ? Color(0xFF16A34A) : Color(0xFFD97706),
+                  ),
+                  SizedBox(width: 3.0),
+                  Text(
+                    isPhoneVerified ? '인증됨' : '미인증',
+                    style: TextStyle(
+                      fontFamily: 'Pretendard',
+                      fontSize: 11.0,
+                      fontWeight: FontWeight.w600,
+                      color: isPhoneVerified ? Color(0xFF16A34A) : Color(0xFFD97706),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+        SizedBox(height: 6.0),
+        Container(
+          height: 36.0,
+          child: TextFormField(
+            controller: phoneController,
+            decoration: InputDecoration(
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(8.0),
+                borderSide: BorderSide(
+                  color: isPhoneVerified ? Color(0xFF16A34A) : Color(0xFFE5E7EB),
+                  width: isPhoneVerified ? 1.5 : 1.0,
+                ),
+              ),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(8.0),
+                borderSide: BorderSide(
+                  color: isPhoneVerified ? Color(0xFF16A34A) : Color(0xFFE5E7EB),
+                  width: isPhoneVerified ? 1.5 : 1.0,
+                ),
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(8.0),
+                borderSide: BorderSide(color: Color(0xFF06B6D4), width: 1.5),
+              ),
+              filled: true,
+              fillColor: Colors.white,
+              contentPadding: EdgeInsets.symmetric(horizontal: 12.0, vertical: 8.0),
+              suffixIcon: isPhoneVerified
+                  ? Icon(Icons.check_circle, color: Color(0xFF16A34A), size: 18.0)
+                  : null,
             ),
             style: AppTextStyles.cardSubtitle.copyWith(
               fontWeight: FontWeight.w500,

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '/services/api_service.dart';
+import '/services/sms_service.dart';
 import '/constants/font_sizes.dart';
 
 class AddMemberDialog extends StatefulWidget {
@@ -190,6 +191,194 @@ class _AddMemberDialogState extends State<AddMemberDialog> {
     }
   }
 
+  // SMS 발송 확인 다이얼로그
+  Future<bool?> _showSmsConfirmDialog(String memberName) {
+    return showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16.0),
+          ),
+          title: Row(
+            children: [
+              Container(
+                padding: EdgeInsets.all(8.0),
+                decoration: BoxDecoration(
+                  color: Color(0xFFECFDF5),
+                  borderRadius: BorderRadius.circular(8.0),
+                ),
+                child: Icon(
+                  Icons.sms_outlined,
+                  color: Color(0xFF10B981),
+                  size: 24.0,
+                ),
+              ),
+              SizedBox(width: 12.0),
+              Text(
+                '앱 설치 안내',
+                style: TextStyle(
+                  fontFamily: 'Pretendard',
+                  fontSize: 18.0,
+                  fontWeight: FontWeight.w700,
+                  color: Color(0xFF1F2937),
+                ),
+              ),
+            ],
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                '$memberName 회원님에게',
+                style: TextStyle(
+                  fontFamily: 'Pretendard',
+                  fontSize: 15.0,
+                  fontWeight: FontWeight.w600,
+                  color: Color(0xFF374151),
+                ),
+              ),
+              SizedBox(height: 4.0),
+              Text(
+                '앱 설치 링크를 문자로 발송하시겠습니까?',
+                style: TextStyle(
+                  fontFamily: 'Pretendard',
+                  fontSize: 15.0,
+                  fontWeight: FontWeight.w500,
+                  color: Color(0xFF374151),
+                ),
+              ),
+              SizedBox(height: 16.0),
+              Container(
+                padding: EdgeInsets.all(12.0),
+                decoration: BoxDecoration(
+                  color: Color(0xFFF3F4F6),
+                  borderRadius: BorderRadius.circular(8.0),
+                ),
+                child: Row(
+                  children: [
+                    Icon(
+                      Icons.info_outline,
+                      size: 16.0,
+                      color: Color(0xFF6B7280),
+                    ),
+                    SizedBox(width: 8.0),
+                    Expanded(
+                      child: Text(
+                        'iOS / Android 앱 설치 링크가 포함된\n문자가 발송됩니다.',
+                        style: TextStyle(
+                          fontFamily: 'Pretendard',
+                          fontSize: 13.0,
+                          fontWeight: FontWeight.w400,
+                          color: Color(0xFF6B7280),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: Text(
+                '아니오',
+                style: TextStyle(
+                  fontFamily: 'Pretendard',
+                  color: Color(0xFF6B7280),
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ),
+            ElevatedButton(
+              onPressed: () => Navigator.of(context).pop(true),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Color(0xFF10B981),
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8.0),
+                ),
+              ),
+              child: Text(
+                '발송하기',
+                style: TextStyle(
+                  fontFamily: 'Pretendard',
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  // 앱 설치 안내 SMS 발송
+  Future<void> _sendAppInstallSms(String phoneNumber, String memberName) async {
+    try {
+      final result = await SmsService.sendAppInstallSms(
+        phoneNumber: phoneNumber,
+        memberName: memberName,
+        appName: 'crm_lite_pro', // CRM에서는 crm_lite_pro 앱 안내
+      );
+
+      if (mounted) {
+        if (result['success'] == true) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                '앱 설치 안내 문자가 발송되었습니다.',
+                style: TextStyle(
+                  fontFamily: 'Pretendard',
+                  color: Colors.white,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+              backgroundColor: Color(0xFF3B82F6),
+              duration: Duration(seconds: 2),
+            ),
+          );
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                '문자 발송 실패: ${result['error']}',
+                style: TextStyle(
+                  fontFamily: 'Pretendard',
+                  color: Colors.white,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+              backgroundColor: Color(0xFFEF4444),
+              duration: Duration(seconds: 3),
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      print('❌ SMS 발송 오류: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              '문자 발송 중 오류가 발생했습니다.',
+              style: TextStyle(
+                fontFamily: 'Pretendard',
+                color: Colors.white,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+            backgroundColor: Color(0xFFEF4444),
+            duration: Duration(seconds: 3),
+          ),
+        );
+      }
+    }
+  }
+
   // 회원 등록 처리
   Future<void> _saveMember() async {
     if (!_formKey.currentState!.validate()) {
@@ -253,23 +442,38 @@ class _AddMemberDialogState extends State<AddMemberDialog> {
 
       if (result['success'] == true) {
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(
-                '회원이 성공적으로 등록되었습니다. (회원번호: ${result['member_id']})',
-                style: TextStyle(
-                  fontFamily: 'Pretendard',
-                  color: Colors.white,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-              backgroundColor: Color(0xFF10B981),
-              duration: Duration(seconds: 3),
-            ),
-          );
+          final memberPhone = memberData['member_phone'];
+          final memberNameText = (memberData['member_name'] ?? '').toString();
           
-          Navigator.of(context).pop();
-          widget.onMemberAdded();
+          // 전화번호가 있는 경우 앱 설치 안내 SMS 발송 여부 확인
+          if (memberPhone != null && memberPhone.toString().isNotEmpty) {
+            final shouldSendSms = await _showSmsConfirmDialog(memberNameText);
+            
+            if (shouldSendSms == true && mounted) {
+              // SMS 발송
+              _sendAppInstallSms(memberPhone.toString(), memberNameText);
+            }
+          }
+          
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(
+                  '회원이 성공적으로 등록되었습니다. (회원번호: ${result['member_id']})',
+                  style: TextStyle(
+                    fontFamily: 'Pretendard',
+                    color: Colors.white,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                backgroundColor: Color(0xFF10B981),
+                duration: Duration(seconds: 3),
+              ),
+            );
+            
+            Navigator.of(context).pop();
+            widget.onMemberAdded();
+          }
         }
       }
     } catch (e) {

@@ -847,7 +847,10 @@ class _MemberRowWidgetState extends State<_MemberRowWidget> {
                 ),
               );
             },
-          );
+          ).then((_) {
+            // 다이얼로그 닫힐 때 회원 목록 새로고침
+            widget.model.loadMemberData();
+          });
         },
         child: Container(
           width: double.infinity,
